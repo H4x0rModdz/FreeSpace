@@ -1,6 +1,8 @@
 using System.Text.Json;
-using FreeSpace.Api.Tenants;
+using FreeSpace.Api.Common;
+using FreeSpace.Domain.Tenancy;
 using FreeSpace.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace FreeSpace.Api.Auditing;
@@ -8,15 +10,15 @@ namespace FreeSpace.Api.Auditing;
 public sealed record AuditEventResponse(
     Guid Id, Guid? ActorUserId, string Action, string? TargetType, Guid? TargetId, JsonElement? Data, string? IpAddress, DateTimeOffset CreatedAt);
 
-public static class AuditEndpoints
+[Route("api/v1/tenants/current/audit-events")]
+[Tags("Audit")]
+[MinimumRole(TenantRole.Admin)]
+public sealed class AuditEventsController(AppDbContext db) : SecureController
 {
-    public static void MapAuditEndpoints(this IEndpointRouteBuilder api)
-    {
-        api.MapGet("/tenants/current/audit-events", List).WithTags("Audit").RequireAuthorization(TenantEndpoints.AdminPolicy);
-    }
-
     /// <summary>Newest first. Page with <c>before</c> = the <c>createdAt</c> of the last item received.</summary>
-    private static async Task<IResult> List(AppDbContext db, int? limit, DateTimeOffset? before, CancellationToken ct)
+    [HttpGet]
+    [ProducesResponseType<List<AuditEventResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> List([FromQuery] int? limit, [FromQuery] DateTimeOffset? before, CancellationToken ct)
     {
         var take = Math.Clamp(limit ?? 50, 1, 200);
         var query = db.AuditEvents.AsQueryable(); // tenant-scoped by the global filter
@@ -27,7 +29,7 @@ public static class AuditEndpoints
             .Take(take)
             .ToListAsync(ct);
 
-        return TypedResults.Ok(rows.Select(e => new AuditEventResponse(
+        return Ok(rows.Select(e => new AuditEventResponse(
             e.Id, e.ActorUserId, e.Action, e.TargetType, e.TargetId,
             e.DataJson is null ? null : JsonDocument.Parse(e.DataJson).RootElement,
             e.IpAddress, e.CreatedAt)));

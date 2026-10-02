@@ -1,3 +1,4 @@
+using FreeSpace.Api.Configurations;
 using FreeSpace.Domain.Storage;
 using FreeSpace.Infrastructure.Persistence;
 using FreeSpace.Infrastructure.Storage;

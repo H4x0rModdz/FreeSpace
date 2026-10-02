@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace FreeSpace.Api;
+namespace FreeSpace.Api.Configurations;
 
 public sealed class JwtOptions
 {

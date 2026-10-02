@@ -1,5 +1,6 @@
 using System.Text;
 using FreeSpace.Api.Common;
+using FreeSpace.Api.Configurations;
 using FreeSpace.Domain.Identity;
 using FreeSpace.Infrastructure.Persistence;
 using FreeSpace.Infrastructure.Security;

@@ -1,13 +1,18 @@
 using System.ComponentModel.DataAnnotations;
 using FreeSpace.Api.Auditing;
 using FreeSpace.Api.Common;
+using FreeSpace.Api.Configurations;
 using FreeSpace.Domain.Identity;
 using FreeSpace.Domain.Tenancy;
 using FreeSpace.Infrastructure.Persistence;
 using FreeSpace.Infrastructure.Security;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using DomainUser = FreeSpace.Domain.Identity.User;
 
 namespace FreeSpace.Api.Auth;
 
@@ -35,38 +40,30 @@ public sealed record MeResponse(MeUser User, MeTenant Tenant);
 public sealed record MeUser(Guid Id, string Email, string Name, bool EmailVerified);
 public sealed record MeTenant(Guid Id, string Name, TenantRole Role);
 
-public static class AuthEndpoints
+/// <summary>Anonymous endpoints that establish a session.</summary>
+[Route("api/v1/auth")]
+[Tags("Auth")]
+public sealed class AuthController(
+    AppDbContext db, IPasswordHasher hasher, SessionIssuer sessions, AuditLog audit,
+    IOptions<AuthOptions> authOptions, TimeProvider clock) : BaseController
 {
-    public const string RateLimitPolicy = "auth";
-
-    public static void MapAuthEndpoints(this IEndpointRouteBuilder api)
-    {
-        var auth = api.MapGroup("/auth").WithTags("Auth");
-        auth.MapPost("/register", Register).AllowAnonymous().RequireRateLimiting(RateLimitPolicy);
-        auth.MapPost("/login", Login).AllowAnonymous().RequireRateLimiting(RateLimitPolicy);
-        auth.MapPost("/refresh", Refresh).AllowAnonymous().RequireRateLimiting(RateLimitPolicy);
-        auth.MapPost("/logout", Logout);
-        auth.MapPost("/switch-tenant", SwitchTenant);
-
-        api.MapGet("/me", Me).WithTags("Auth");
-    }
-
-    private static async Task<IResult> Register(
-        RegisterRequest request, AppDbContext db, IPasswordHasher hasher, SessionIssuer sessions, AuditLog audit,
-        IOptions<AuthOptions> authOptions, TimeProvider clock, CancellationToken ct)
+    /// <summary>Creates a user plus a personal tenant they own, and signs them in.</summary>
+    [HttpPost("register"), AllowAnonymous, EnableRateLimiting(RateLimitPolicies.Auth)]
+    [ProducesResponseType<TokenPair>(StatusCodes.Status201Created)]
+    public async Task<IActionResult> Register(RegisterRequest request, CancellationToken ct)
     {
         if (!authOptions.Value.AllowRegistration)
-            return ApiErrors.Forbidden("registration_disabled", "Self-service registration is disabled.");
+            return ForbiddenError("registration_disabled", "Self-service registration is disabled.");
 
-        var normalizedEmail = User.NormalizeEmail(request.Email);
+        var normalizedEmail = DomainUser.NormalizeEmail(request.Email);
         if (await db.Users.AnyAsync(u => u.NormalizedEmail == normalizedEmail, ct))
             return EmailTaken();
 
         var now = clock.GetUtcNow();
-        var user = new User(request.Email, request.Name, hasher.Hash(request.Password), now);
+        var user = new DomainUser(request.Email, request.Name, hasher.Hash(request.Password), now);
         var tenant = new Tenant(string.IsNullOrWhiteSpace(request.TenantName) ? $"{user.Name}'s space" : request.TenantName, now);
         db.AddRange(user, tenant, new Membership(tenant.Id, user.Id, TenantRole.Owner, now));
-        var tokens = sessions.Start(user.Id, tenant.Id);
+        var pair = sessions.Start(user.Id, tenant.Id);
         audit.Record(tenant.Id, user.Id, AuditActions.UserRegistered, "user", user.Id);
 
         try
@@ -78,16 +75,14 @@ public static class AuthEndpoints
             return EmailTaken(); // lost a race with a concurrent registration
         }
 
-        return TypedResults.Created("/api/v1/me", tokens);
+        return Created("/api/v1/me", pair);
     }
 
-    private static IResult EmailTaken() => ApiErrors.Conflict("email_taken", "This e-mail is already registered.");
-
-    private static async Task<IResult> Login(
-        LoginRequest request, AppDbContext db, IPasswordHasher hasher, SessionIssuer sessions, AuditLog audit,
-        TimeProvider clock, CancellationToken ct)
+    [HttpPost("login"), AllowAnonymous, EnableRateLimiting(RateLimitPolicies.Auth)]
+    [ProducesResponseType<TokenPair>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Login(LoginRequest request, CancellationToken ct)
     {
-        var normalizedEmail = User.NormalizeEmail(request.Email);
+        var normalizedEmail = DomainUser.NormalizeEmail(request.Email);
         var user = await db.Users.FirstOrDefaultAsync(u => u.NormalizedEmail == normalizedEmail, ct);
         if (user?.PasswordHash is null)
         {
@@ -95,14 +90,14 @@ public static class AuthEndpoints
             return InvalidCredentials();
         }
         if (!hasher.Verify(user.PasswordHash, request.Password)) return InvalidCredentials();
-        if (!user.IsActive) return ApiErrors.Forbidden("account_disabled", "This account is disabled.");
+        if (!user.IsActive) return ForbiddenError("account_disabled", "This account is disabled.");
 
         var memberships = db.Memberships.Where(m => m.UserId == user.Id);
         Guid tenantId;
         if (request.TenantId is { } requested)
         {
             if (!await memberships.AnyAsync(m => m.TenantId == requested, ct))
-                return ApiErrors.Forbidden("not_a_member", "You are not a member of this tenant.");
+                return ForbiddenError("not_a_member", "You are not a member of this tenant.");
             tenantId = requested;
         }
         else
@@ -120,16 +115,16 @@ public static class AuthEndpoints
             tenantId = first.Value;
         }
 
-        var tokens = sessions.Start(user.Id, tenantId);
+        var pair = sessions.Start(user.Id, tenantId);
         audit.Record(tenantId, user.Id, AuditActions.Login, "user", user.Id);
         await db.SaveChangesAsync(ct);
-        return TypedResults.Ok(tokens);
+        return Ok(pair);
     }
 
-    private static IResult InvalidCredentials() => ApiErrors.Unauthorized("invalid_credentials", "Invalid e-mail or password.");
-
-    private static async Task<IResult> Refresh(
-        RefreshRequest request, AppDbContext db, SessionIssuer sessions, AuditLog audit, TimeProvider clock, CancellationToken ct)
+    /// <summary>Rotates the refresh token. Presenting an already-rotated token revokes the whole session.</summary>
+    [HttpPost("refresh"), AllowAnonymous, EnableRateLimiting(RateLimitPolicies.Auth)]
+    [ProducesResponseType<TokenPair>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Refresh(RefreshRequest request, CancellationToken ct)
     {
         if (!TokenService.TryParseRefreshToken(request.RefreshToken, out var sessionId, out var secretHash))
             return InvalidRefreshToken();
@@ -147,7 +142,7 @@ public static class AuthEndpoints
                 audit.Record(session.TenantId, session.UserId, AuditActions.RefreshTokenReused, "session", session.Id);
                 await db.SaveChangesAsync(ct);
             }
-            return ApiErrors.Unauthorized("refresh_token_reused", "Refresh token was already used; the session has been revoked.");
+            return UnauthorizedError("refresh_token_reused", "Refresh token was already used; the session has been revoked.");
         }
 
         if (!SecureTokens.HashEquals(session.RefreshTokenHash, secretHash) || !session.IsActive(now))
@@ -162,51 +157,19 @@ public static class AuthEndpoints
             return InvalidRefreshToken();
         }
 
-        var tokens = sessions.Rotate(session);
+        var pair = sessions.Rotate(session);
         try
         {
             await db.SaveChangesAsync(ct);
         }
         catch (DbUpdateConcurrencyException)
         {
-            return ApiErrors.Conflict("refresh_conflict", "The session was refreshed concurrently; retry with the latest token.");
+            return ConflictError("refresh_conflict", "The session was refreshed concurrently; retry with the latest token.");
         }
-        return TypedResults.Ok(tokens);
+        return Ok(pair);
     }
 
-    private static IResult InvalidRefreshToken() => ApiErrors.Unauthorized("invalid_refresh_token", "Refresh token is invalid or expired.");
-
-    private static async Task<IResult> Logout(AppDbContext db, CurrentUser me, AuditLog audit, TimeProvider clock, CancellationToken ct)
-    {
-        var session = await db.Sessions.FirstAsync(s => s.Id == me.SessionId, ct);
-        session.Revoke("logout", clock.GetUtcNow());
-        audit.Record(session.TenantId, me.UserId, AuditActions.Logout, "session", session.Id);
-        await db.SaveChangesAsync(ct);
-        return TypedResults.NoContent();
-    }
-
-    private static async Task<IResult> SwitchTenant(SwitchTenantRequest request, AppDbContext db, CurrentUser me, TokenService tokens, CancellationToken ct)
-    {
-        if (!await db.Memberships.AnyAsync(m => m.UserId == me.UserId && m.TenantId == request.TenantId, ct))
-            return ApiErrors.Forbidden("not_a_member", "You are not a member of this tenant.");
-
-        var session = await db.Sessions.FirstAsync(s => s.Id == me.SessionId, ct);
-        session.SwitchTenant(request.TenantId); // invalidates access tokens issued for the previous tenant
-        await db.SaveChangesAsync(ct);
-
-        var access = tokens.CreateAccessToken(me.UserId, session.Id, request.TenantId);
-        return TypedResults.Ok(new AccessTokenResponse(access.Token, access.ExpiresAt));
-    }
-
-    private static async Task<IResult> Me(AppDbContext db, CurrentUser me, CancellationToken ct)
-    {
-        var user = await db.Users.Where(u => u.Id == me.UserId)
-            .Select(u => new MeUser(u.Id, u.Email, u.Name, u.EmailVerifiedAt != null))
-            .FirstAsync(ct);
-        var role = me.Role;
-        var tenant = await db.Tenants.Where(t => t.Id == me.RequiredTenantId)
-            .Select(t => new MeTenant(t.Id, t.Name, role))
-            .FirstAsync(ct);
-        return TypedResults.Ok(new MeResponse(user, tenant));
-    }
+    private ObjectResult EmailTaken() => ConflictError("email_taken", "This e-mail is already registered.");
+    private ObjectResult InvalidCredentials() => UnauthorizedError("invalid_credentials", "Invalid e-mail or password.");
+    private ObjectResult InvalidRefreshToken() => UnauthorizedError("invalid_refresh_token", "Refresh token is invalid or expired.");
 }

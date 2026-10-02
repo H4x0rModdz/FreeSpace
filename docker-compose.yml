@@ -33,6 +33,7 @@ services:
       Storage__S3__AllowPrivateEndpoints: ${S3_ALLOW_PRIVATE_ENDPOINTS:-false}
       Storage__S3__AllowInsecureEndpoints: ${S3_ALLOW_INSECURE_ENDPOINTS:-false}
       Database__MigrateOnStartup: "true"
+      ApiDocs__Enabled: ${API_DOCS_ENABLED:-false}
     ports:
       - "${API_PORT:-8080}:8080"
     healthcheck:

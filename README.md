@@ -1,154 +1,164 @@
 # FreeSpace
 
-**FreeSpace junta vários armazenamentos em nuvem num único espaço.**
+**FreeSpace combines multiple cloud storage accounts into a single space.**
 
-Você conecta várias contas do Google Drive e buckets S3-compatíveis (AWS S3, Cloudflare R2,
-Backblaze B2, Wasabi, MinIO…) e o FreeSpace mostra tudo como um só drive: uma árvore de pastas,
-uma quota somada, um lugar só para enviar, organizar, compartilhar e baixar arquivos.
+Connect several Google Drive accounts and S3-compatible buckets (AWS S3, Cloudflare R2,
+Backblaze B2, Wasabi, MinIO…) and FreeSpace presents them as one drive: one folder tree,
+one combined quota, one place to upload, organize, share and download files.
 
-Por baixo, cada arquivo vai para a conta com espaço disponível, conforme a política que você
-escolher. Para quem usa, continua sendo só `/Fotos/viagem.jpg`, sem precisar saber em qual
-conta ele está.
+Under the hood, each file goes to an account with available space, following the policy you
+choose. For you it is still just `/Photos/trip.jpg`, without needing to know which account holds it.
 
-> **Status:** em desenvolvimento ativo. Prontos: autenticação, multi-tenancy, convites,
-> auditoria e conexão de contas de storage (Google Drive e S3) com quota. Árvore de arquivos,
-> uploads e downloads vêm nas próximas fases. Veja o
-> [roadmap](docs/ARCHITECTURE.md#fases).
+> **Status:** under active development. Done: authentication, multi-tenancy, invitations,
+> auditing, and connecting storage accounts (Google Drive and S3) with quota tracking. The file
+> tree, uploads and downloads come in the next phases. See the [roadmap](docs/ARCHITECTURE.md#fases).
 
-## Por que existe
+## Why it exists
 
-O espaço gratuito ou barato está espalhado: alguns GB numa conta, um bucket barato em outro
-provedor, uma conta de trabalho com folga. Gerenciar isso à mão é trabalhoso: é preciso lembrar
-onde está cada arquivo, vigiar quotas e mover coisas quando uma conta enche.
+Free or cheap storage is scattered: a few GB in one account, a cheap bucket at another provider,
+a work account with room to spare. Managing that by hand is tedious: you have to remember where
+each file lives, watch quotas, and move things around when an account fills up.
 
-O FreeSpace resolve isso como um **gateway de armazenamento self-hosted**:
+FreeSpace solves this as a **self-hosted storage gateway**:
 
-- **Espaço agregado:** a soma das contas aparece como um único armazenamento.
-- **Roteamento automático:** os uploads vão para a conta com mais espaço livre, em rodízio ou por prioridade.
-- **Pastas virtuais:** a organização vive no FreeSpace, independente de onde os bytes estão.
-  Mover ou renomear não toca no provider, e um arquivo pode trocar de conta sem mudar de caminho.
-- **Multi-tenant:** cada espaço de trabalho (pessoal, família, equipe) tem membros, papéis e
-  storages próprios, isolados dos demais.
-- **Seus dados, sua infraestrutura:** roda em qualquer servidor com Docker. As credenciais dos
-  providers ficam criptografadas e nenhum arquivo é tornado público sem você pedir.
+- **Aggregated space:** the sum of your accounts shows up as a single storage.
+- **Automatic routing:** uploads go to the account with the most free space, round-robin, or by priority.
+- **Virtual folders:** organization lives in FreeSpace, independent of where the bytes are.
+  Moving or renaming never touches the provider, and a file can change accounts without changing its path.
+- **Multi-tenant:** each workspace (personal, family, team) has its own members, roles and
+  storage accounts, isolated from the others.
+- **Your data, your infrastructure:** runs on any server with Docker. Provider credentials are
+  encrypted, and no file is ever made public unless you ask for it.
 
-## Como funciona
+## How it works
 
 ```
                  ┌──────────────┐
-  Web / API ───▶ │  FreeSpace   │  árvore virtual, quotas, permissões, auditoria
+  Web / API ───▶ │  FreeSpace   │  virtual tree, quotas, permissions, auditing
                  └──────┬───────┘
-                        │ StorageAllocator escolhe o destino
+                        │ StorageAllocator picks the destination
           ┌─────────────┼─────────────┐
           ▼             ▼             ▼
    Google Drive #1  Google Drive #2  S3 / R2 / B2
 ```
 
-- **Nó virtual → objeto → réplica:** o que você vê (pasta/arquivo) é separado de onde o dado
-  está fisicamente, o que permite realocação e, no futuro, replicação entre contas.
-- **Uploads diretos:** sempre que possível o navegador envia os bytes direto ao storage
-  (sessão resumable do Drive, URLs presigned do S3), e o servidor só coordena.
-- **Downloads com Range:** permitem streaming e seek em vídeos grandes.
+- **Virtual node → object → replica:** what you see (folder/file) is separate from where the data
+  physically lives, which enables relocation and, later, replication across accounts.
+- **Direct uploads:** whenever possible the browser sends bytes straight to the storage
+  (Drive resumable sessions, S3 presigned URLs) while the server only coordinates.
+- **Range downloads:** streaming and seeking in large videos.
 
-Detalhes em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Stack
 
-- .NET 10 / ASP.NET Core Minimal APIs
+- .NET 10 / ASP.NET Core (controllers) with interactive docs via Scalar
 - PostgreSQL 18 + Entity Framework Core
-- JWT de acesso curto + refresh token com rotação e detecção de reuso
-- Argon2id para senhas, rate limiting, erros no formato RFC 9457 (ProblemDetails)
+- Short-lived JWT access tokens + refresh tokens with rotation and reuse detection
+- Argon2id password hashing, rate limiting, RFC 9457 errors (ProblemDetails)
 - Docker Compose
-- xUnit + Testcontainers (testes de integração contra Postgres real)
+- xUnit + Testcontainers (integration tests against real Postgres and S3)
 
-## Rodando com Docker
+## Running with Docker
 
 ```bash
-cp .env.example .env   # preencha POSTGRES_PASSWORD e JWT_SIGNING_KEY (ex.: openssl rand -base64 48)
+cp .env.example .env   # fill in POSTGRES_PASSWORD, JWT_SIGNING_KEY and ENCRYPTION_KEY
 docker compose up -d --build --wait
 curl http://localhost:8080/health/ready
 ```
 
-As migrations do banco rodam automaticamente quando a API sobe. Se a porta 8080 estiver
-ocupada, troque `API_PORT` no `.env`.
+Database migrations run automatically when the API starts. If port 8080 is taken, change
+`API_PORT` in `.env`.
 
-## Desenvolvimento
+## Development
 
-Requer o .NET SDK 10 e Docker.
-
-```bash
-docker compose up -d postgres          # ou um Postgres local (usuário/senha: freespace)
-dotnet run --project src/FreeSpace.Api # usa appsettings.Development.json; OpenAPI em /openapi/v1.json
-dotnet test                            # sobe um Postgres descartável via Testcontainers
-```
-
-Nova migration:
+Requires the .NET 10 SDK and Docker.
 
 ```bash
-dotnet ef migrations add <Nome> -p src/FreeSpace.Infrastructure -s src/FreeSpace.Api -o Persistence/Migrations
+docker compose up -d postgres          # or a local Postgres (user/password: freespace)
+dotnet run --project src/FreeSpace.Api # uses appsettings.Development.json; docs at /scalar
+dotnet test                            # spins up disposable Postgres and S3 containers
 ```
 
-### Estrutura
+New migration:
+
+```bash
+dotnet ef migrations add <Name> -p src/FreeSpace.Infrastructure -s src/FreeSpace.Api -o Persistence/Migrations
+```
+
+### Layout
 
 ```
-src/FreeSpace.Domain          entidades e regras de negócio (sem dependências externas)
-src/FreeSpace.Infrastructure  EF Core/Postgres, migrations, hashing e tokens
-src/FreeSpace.Api             endpoints, autenticação, rate limiting, ProblemDetails
-tests/FreeSpace.Tests         testes unitários e de integração
-docs/                         arquitetura e roadmap
+src/FreeSpace.Domain          entities and business rules (no external dependencies)
+src/FreeSpace.Infrastructure  EF Core/Postgres, migrations, crypto, storage providers
+src/FreeSpace.Api             controllers, authentication, rate limiting, ProblemDetails
+  Configurations/             service registration and pipeline, one file per concern
+  Common/                     BaseController and SecureController
+tests/FreeSpace.Tests         unit and integration tests
+docs/                         architecture and roadmap
 ```
 
 ## API (v1)
 
-Todas as rotas exigem `Authorization: Bearer <accessToken>`, exceto as marcadas como públicas.
-Os erros seguem a RFC 9457 (`application/problem+json`) e trazem um campo `code` estável.
+The interactive reference (Scalar) lives at `/scalar`. It is on automatically in Development;
+in production set `API_DOCS_ENABLED=true`.
 
-| Método | Rota | Descrição |
+Controllers follow a hierarchy:
+- **`BaseController`:** shared error format (ProblemDetails + `code`). Used directly only by
+  session-less routes (login, register, refresh, OAuth callback).
+- **`SecureController`:** requires a valid session and an active tenant, enforces
+  `[MinimumRole(...)]`, and exposes `UserId`, `TenantId`, `Role` and permission helpers.
+  Everything else derives from it.
+
+Every route requires `Authorization: Bearer <accessToken>` unless marked public.
+Errors follow RFC 9457 (`application/problem+json`) and carry a stable `code` field.
+
+| Method | Route | Description |
 |---|---|---|
-| POST | `/api/v1/auth/register` | Público. Cria o usuário e um espaço pessoal (owner) |
-| POST | `/api/v1/auth/login` | Público. `tenantId` opcional |
-| POST | `/api/v1/auth/refresh` | Público. Rotaciona o refresh token; reusar um token antigo revoga a sessão |
-| POST | `/api/v1/auth/logout` | Revoga a sessão atual |
-| POST | `/api/v1/auth/switch-tenant` | Novo access token para outro espaço do usuário |
-| GET | `/api/v1/me` | Usuário, espaço ativo e papel |
-| GET/POST | `/api/v1/tenants` | Listar meus espaços / criar espaço |
-| GET/PATCH | `/api/v1/tenants/current` | Ver / renomear (admin+) |
-| GET | `/api/v1/tenants/current/members` | Membros |
-| PATCH/DELETE | `/api/v1/tenants/current/members/{userId}` | Mudar papel (admin+) / remover (admin+ ou o próprio membro) |
-| GET/POST/DELETE | `/api/v1/tenants/current/invitations[/{id}]` | Convites por link (admin+) |
-| POST | `/api/v1/invitations/accept` | Aceitar convite |
-| GET | `/api/v1/tenants/current/audit-events` | Log de auditoria (admin+), `?limit=&before=` |
-| GET | `/api/v1/storage-accounts[/{id}]` | Contas de storage do espaço, com quota e status |
-| GET | `/api/v1/storage-accounts/summary` | Espaço total, usado e livre somando as contas ativas |
-| POST | `/api/v1/storage-accounts/google/authorize` | Admin+. Devolve a URL de consentimento do Google |
-| GET | `/api/v1/storage-accounts/google/callback` | Público (redirect do Google). Conecta a conta e volta ao frontend |
-| POST | `/api/v1/storage-accounts/s3` | Admin+. Valida endpoint e credenciais (grava e apaga um objeto de teste) |
-| PATCH | `/api/v1/storage-accounts/{id}` | Admin+. Nome, prioridade, habilitar/desabilitar |
-| POST | `/api/v1/storage-accounts/{id}/sync` | Admin+. Atualiza a quota agora |
-| DELETE | `/api/v1/storage-accounts/{id}` | Admin+. Remove (no Google, revoga o acesso concedido) |
-| GET | `/health/live`, `/health/ready` | Públicos |
+| POST | `/api/v1/auth/register` | Public. Creates the user and a personal workspace (owner) |
+| POST | `/api/v1/auth/login` | Public. Optional `tenantId` |
+| POST | `/api/v1/auth/refresh` | Public. Rotates the refresh token; reusing an old token revokes the session |
+| POST | `/api/v1/auth/logout` | Revokes the current session |
+| POST | `/api/v1/auth/switch-tenant` | New access token for another of the user's workspaces |
+| GET | `/api/v1/me` | User, active workspace and role |
+| GET/POST | `/api/v1/tenants` | List my workspaces / create a workspace |
+| GET/PATCH | `/api/v1/tenants/current` | View / rename (admin+) |
+| GET | `/api/v1/tenants/current/members` | Members |
+| PATCH/DELETE | `/api/v1/tenants/current/members/{userId}` | Change role (admin+) / remove (admin+ or the member themselves) |
+| GET/POST/DELETE | `/api/v1/tenants/current/invitations[/{id}]` | Invite links (admin+) |
+| POST | `/api/v1/invitations/accept` | Accept an invitation |
+| GET | `/api/v1/tenants/current/audit-events` | Audit log (admin+), `?limit=&before=` |
+| GET | `/api/v1/storage-accounts[/{id}]` | Storage accounts of the workspace, with quota and status |
+| GET | `/api/v1/storage-accounts/summary` | Total, used and free space across active accounts |
+| POST | `/api/v1/storage-accounts/google/authorize` | Admin+. Returns the Google consent URL |
+| GET | `/api/v1/storage-accounts/google/callback` | Public (Google redirect). Connects the account and returns to the frontend |
+| POST | `/api/v1/storage-accounts/s3` | Admin+. Validates endpoint and keys (writes and deletes a probe object) |
+| PATCH | `/api/v1/storage-accounts/{id}` | Admin+. Name, priority, enable/disable |
+| POST | `/api/v1/storage-accounts/{id}/sync` | Admin+. Refresh quota now |
+| DELETE | `/api/v1/storage-accounts/{id}` | Admin+. Remove (for Google, also revokes the granted access) |
+| GET | `/health/live`, `/health/ready` | Public |
 
-Papéis: `viewer < member < admin < owner`. Admins gerenciam e concedem apenas papéis abaixo
-de admin, e todo espaço mantém pelo menos um owner.
+Roles: `viewer < member < admin < owner`. Admins manage and grant only roles below admin,
+and every workspace keeps at least one owner.
 
-## Conectando storages
+## Connecting storage
 
-**Google Drive:** crie um OAuth client do tipo *Web application* no Google Cloud Console,
-ative a Drive API e cadastre `GOOGLE_REDIRECT_URI` como redirect autorizado. O FreeSpace pede
-apenas o escopo `drive.file`, ou seja, enxerga **só os arquivos que ele mesmo criou**, nunca o
-resto do seu Drive. Esse escopo não exige auditoria de segurança do Google.
+**Google Drive:** create an OAuth client of type *Web application* in Google Cloud Console,
+enable the Drive API, and register `GOOGLE_REDIRECT_URI` as an authorized redirect URI.
+FreeSpace requests only the `drive.file` scope, so it sees **only the files it created itself**,
+never the rest of your Drive. This scope does not require a Google security review.
 
-**S3-compatível:** informe endpoint, região, bucket e chaves. A conexão só é salva se as
-chaves conseguirem gravar e apagar um objeto de teste no prefixo. Endpoints em redes
-privadas e HTTP puro são bloqueados por padrão (proteção contra SSRF); para um MinIO na sua
-rede local, habilite `S3_ALLOW_PRIVATE_ENDPOINTS` e `S3_ALLOW_INSECURE_ENDPOINTS`.
+**S3-compatible:** provide endpoint, region, bucket and keys. The connection is saved only if
+the keys can write and delete a probe object under the prefix. Endpoints on private networks
+and plain HTTP are blocked by default (SSRF protection); for a MinIO on your LAN, enable
+`S3_ALLOW_PRIVATE_ENDPOINTS` and `S3_ALLOW_INSECURE_ENDPOINTS`.
 
-As credenciais ficam criptografadas no banco (AES-256-GCM) com a `ENCRYPTION_KEY`, que fica
-fora do banco. **Guarde um backup dessa chave**: sem ela, todas as contas precisam ser reconectadas.
+Credentials are encrypted in the database (AES-256-GCM) with `ENCRYPTION_KEY`, which lives
+outside the database. **Keep a backup of that key**: without it, every account has to be reconnected.
 
-## Segurança
+## Security
 
-- Nunca commite o `.env`. Os segredos entram por variáveis de ambiente.
-- Os valores em `appsettings.Development.json` servem só para desenvolvimento local e não devem
-  ser usados em produção.
-- Encontrou uma vulnerabilidade? Abra uma issue sem detalhes de exploração e peça um canal privado.
+- Never commit `.env`. Secrets come in through environment variables.
+- The values in `appsettings.Development.json` are for local development only and must not be
+  used in production.
+- Found a vulnerability? Open an issue without exploit details and ask for a private channel.
