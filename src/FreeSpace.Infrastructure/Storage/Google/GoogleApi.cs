@@ -51,6 +51,9 @@ public interface IGoogleApi
     Task<ResumableStatus> PutResumableChunkAsync(Uri session, long offset, long length, long size, Stream content, CancellationToken ct);
 
     Task CancelResumableUploadAsync(Uri session, CancellationToken ct);
+
+    /// <summary>Streams a Drive file's content (optionally one byte range).</summary>
+    Task<Stream> DownloadAsync(string refreshToken, string fileId, ByteRange? range, CancellationToken ct);
     Task RevokeAsync(string refreshToken, CancellationToken ct);
 }
 
@@ -58,6 +61,8 @@ public sealed class GoogleApi(IOptions<GoogleOptions> options, IHttpClientFactor
 {
     /// <summary>Named HttpClient for resumable-upload traffic (long timeout, no redirect following: 308 means "resume").</summary>
     public const string UploadHttpClient = "google-upload";
+    /// <summary>Named HttpClient for downloads: no overall timeout, since bodies stream for as long as the client reads.</summary>
+    public const string DownloadHttpClient = "google-download";
     private const string AppFolderName = "FreeSpace";
     private const string FolderMimeType = "application/vnd.google-apps.folder";
 
@@ -197,6 +202,42 @@ public sealed class GoogleApi(IOptions<GoogleOptions> options, IHttpClientFactor
     {
         using var request = new HttpRequestMessage(HttpMethod.Delete, session);
         using var _ = await SendAsync(request, ct); // Google answers 499; anything is fine here
+    }
+
+    public async Task<Stream> DownloadAsync(string refreshToken, string fileId, ByteRange? range, CancellationToken ct)
+    {
+        var accessToken = await WithDriveAsync(refreshToken, drive =>
+            ((UserCredential)drive.HttpClientInitializer).GetAccessTokenForRequestAsync(cancellationToken: ct));
+
+        var request = new HttpRequestMessage(HttpMethod.Get, $"https://www.googleapis.com/drive/v3/files/{Uri.EscapeDataString(fileId)}?alt=media");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        if (range is { } r) request.Headers.Range = new RangeHeaderValue(r.From, r.To);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await httpClients.CreateClient(DownloadHttpClient).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        }
+        catch (HttpRequestException e)
+        {
+            request.Dispose();
+            throw new StorageConnectionException($"Could not reach Google: {e.Message}", e);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            using (request)
+            using (response)
+            {
+                throw response.StatusCode switch
+                {
+                    HttpStatusCode.NotFound => new StorageObjectMissingException("The file no longer exists in Google Drive."),
+                    HttpStatusCode.Unauthorized => new StorageAuthException("Google rejected the credentials; reconnect the account."),
+                    _ => new StorageConnectionException($"Google download failed ({(int)response.StatusCode})."),
+                };
+            }
+        }
+        return new OwnedStream(await response.Content.ReadAsStreamAsync(ct), response, request);
     }
 
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)

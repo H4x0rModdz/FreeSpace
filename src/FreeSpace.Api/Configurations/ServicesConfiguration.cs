@@ -16,6 +16,7 @@ internal static class ServicesConfiguration
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<AuditLog>();
 
+        services.AddHttpClient(GoogleApi.DownloadHttpClient, client => client.Timeout = Timeout.InfiniteTimeSpan);
         services.AddHttpClient(GoogleApi.UploadHttpClient, client => client.Timeout = TimeSpan.FromMinutes(30))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false }); // 308 = "resume incomplete"
         services.AddSingleton<IGoogleApi, GoogleApi>();
@@ -31,6 +32,7 @@ internal static class ServicesConfiguration
         services.AddScoped<ReplicaPurger>();
         services.AddScoped<StorageAllocator>();
         services.AddScoped<UploadService>();
+        services.AddScoped<ContentReader>();
 
         services.AddHostedService<QuotaSyncWorker>();
         services.AddHostedService<ReplicaPurgeWorker>();

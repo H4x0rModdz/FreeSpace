@@ -24,6 +24,9 @@ public sealed class RateLimitOptions
 {
     /// <summary>Requests per minute per client IP on login/register/refresh/accept.</summary>
     [Range(1, 100_000)] public int AuthPermitsPerMinute { get; set; } = 10;
+
+    /// <summary>Requests per minute per client IP on anonymous content endpoints (signed links, public shares).</summary>
+    [Range(1, 1_000_000)] public int PublicPermitsPerMinute { get; set; } = 300;
 }
 
 public sealed class ReverseProxyOptions
@@ -61,5 +64,12 @@ public sealed class StorageOptions
     [Range(1, 5L << 40)] public long MaxUploadBytes { get; set; } = 5L << 40;
     /// <summary>How long an unfinished upload keeps its reservation (Drive sessions live up to a week).</summary>
     [Range(1, 168)] public int UploadSessionHours { get; set; } = 24;
+
+    /// <summary>Limits for streamed zip downloads.</summary>
+    [Range(1, 1_000_000)] public int MaxZipEntries { get; set; } = 10_000;
+    [Range(1, long.MaxValue)] public long MaxZipBytes { get; set; } = 50L << 30;
+
+    /// <summary>Lifetime of signed download links (also S3 presigned GETs).</summary>
+    [Range(1, 1440)] public int ContentLinkMinutes { get; set; } = 60;
     [Range(1, 1440)] public int QuotaSyncMinutes { get; set; } = 15;
 }

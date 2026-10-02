@@ -11,7 +11,8 @@ choose. For you it is still just `/Photos/trip.jpg`, without needing to know whi
 
 > **Status:** under active development. Done: authentication, multi-tenancy, invitations,
 > auditing, connecting storage accounts (Google Drive and S3) with quota tracking, the virtual
-> file tree (folders, move/rename, trash, search) and resumable uploads. Downloads come next. See the [roadmap](docs/ARCHITECTURE.md#phases).
+> file tree (folders, move/rename, trash, search), resumable uploads, and downloads (ranged
+> streaming, previews, zip, public links). A desktop app (Avalonia UI) is the planned main client. See the [roadmap](docs/ARCHITECTURE.md#phases).
 
 ## Why it exists
 
@@ -154,6 +155,14 @@ Errors follow RFC 9457 (`application/problem+json`) and carry a stable `code` fi
 | POST | `/api/v1/uploads/{id}/chunk-urls` | S3: presigned URLs to send chunks straight to the bucket |
 | POST | `/api/v1/uploads/{id}/complete` | Verify all bytes arrived and publish the file node |
 | DELETE | `/api/v1/uploads/{id}` | Cancel and release the reserved space |
+| GET | `/api/v1/nodes/{id}/content?inline=` | Download a file; honors `Range` (seeking). `inline=true` previews safe types |
+| POST | `/api/v1/nodes/{id}/content-link?inline=` | Short-lived link for players/web views (S3: direct presigned URL) |
+| POST | `/api/v1/nodes/zip` | Download files and folders as one streamed zip |
+| GET | `/api/v1/content/{token}` | Public. Serves a signed content link |
+| POST | `/api/v1/nodes/{id}/shares` | Member+. Create a public link (optional `expiresAt`); the token is shown once |
+| GET | `/api/v1/shares` | Active public links of the workspace |
+| DELETE | `/api/v1/shares/{id}` | Revoke a link (its creator or an admin) |
+| GET | `/api/v1/public/shares/{token}[/nodes, /content, /zip]` | Public. What a link exposes: info, folder listing, file content, zip |
 | GET | `/health/live`, `/health/ready` | Public |
 
 Roles: `viewer < member < admin < owner`. Admins manage and grant only roles below admin,
@@ -195,6 +204,21 @@ and plain HTTP are blocked by default (SSRF protection); for a MinIO on your LAN
 
 Unfinished uploads expire after `Storage:UploadSessionHours` (24 h by default) and release their space.
 Each file lives in one account; the largest file is limited by the free space of a single account.
+
+## Downloading and sharing
+
+- `GET /api/v1/nodes/{id}/content` streams the file from its provider and honors a single
+  `Range`, so players can seek in large videos without downloading everything.
+- Clients that cannot send the bearer token (media players, web views, `<img>`) ask for
+  `POST /api/v1/nodes/{id}/content-link`: a signed URL valid for `Storage:ContentLinkMinutes`
+  (60 by default). For S3 it points straight at the bucket, so the bytes skip the server.
+- `POST /api/v1/nodes/zip` streams a zip of any selection; folders keep their structure.
+- Public links (`POST /api/v1/nodes/{id}/shares`) give read access to a file, or to a folder and
+  everything inside it, until they expire or are revoked. Trashing the item pauses them.
+
+Uploaded content is never executed by browsers on the API's origin: responses carry
+`X-Content-Type-Options: nosniff` and a sandboxing `Content-Security-Policy`, and only images,
+video, audio, PDF and plain text are ever rendered inline.
 
 Credentials are encrypted in the database (AES-256-GCM) with `ENCRYPTION_KEY`, which lives
 outside the database. **Keep a backup of that key**: without it, every account has to be reconnected.

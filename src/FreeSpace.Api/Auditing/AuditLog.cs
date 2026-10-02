@@ -31,6 +31,8 @@ public static class AuditActions
     public const string TrashEmptied = "trash.emptied";
     public const string FileUploaded = "node.file_uploaded";
     public const string RoutingPolicyChanged = "storage.routing_policy_changed";
+    public const string ShareCreated = "share.created";
+    public const string ShareRevoked = "share.revoked";
 }
 
 /// <summary>

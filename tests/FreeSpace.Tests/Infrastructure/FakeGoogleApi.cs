@@ -59,6 +59,7 @@ public sealed class FakeGoogleApi : IGoogleApi
     {
         if (RevokedTokens.ContainsKey(refreshToken)) throw new StorageAuthException("invalid_grant");
         DeletedFiles[fileId] = true;
+        Files.TryRemove(fileId, out _);
         return Task.CompletedTask;
     }
 
@@ -90,6 +91,14 @@ public sealed class FakeGoogleApi : IGoogleApi
             Files[upload.FileId] = (upload.Name, upload.Data.ToArray());
         }
         return Status(upload);
+    }
+
+    public Task<Stream> DownloadAsync(string refreshToken, string fileId, ByteRange? range, CancellationToken ct)
+    {
+        if (RevokedTokens.ContainsKey(refreshToken)) throw new StorageAuthException("invalid_grant");
+        if (!Files.TryGetValue(fileId, out var file)) throw new StorageObjectMissingException("Gone from Drive.");
+        var (from, length) = range is { } r ? ((int)r.From, (int)r.Length) : (0, file.Content.Length);
+        return Task.FromResult<Stream>(new MemoryStream(file.Content, from, length, writable: false));
     }
 
     public Task CancelResumableUploadAsync(Uri session, CancellationToken ct)

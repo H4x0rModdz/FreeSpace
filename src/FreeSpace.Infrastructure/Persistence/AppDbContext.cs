@@ -25,6 +25,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
     public DbSet<StoredObject> StoredObjects => Set<StoredObject>();
     public DbSet<Replica> Replicas => Set<Replica>();
     public DbSet<UploadSession> UploadSessions => Set<UploadSession>();
+    public DbSet<Share> Shares => Set<Share>();
 
     // Referenced by the tenant query filter; EF re-evaluates it per context instance.
     private Guid? CurrentTenantId => tenantContext.TenantId;

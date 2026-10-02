@@ -3,12 +3,15 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using FreeSpace.Api.Auditing;
 using FreeSpace.Api.Common;
+using FreeSpace.Api.Configurations;
 using FreeSpace.Domain.Files;
 using FreeSpace.Domain.Tenancy;
 using FreeSpace.Infrastructure.Files;
 using FreeSpace.Infrastructure.Persistence;
+using FreeSpace.Infrastructure.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Npgsql;
 
 namespace FreeSpace.Api.Files;
@@ -23,6 +26,14 @@ public sealed record NodeResponse(
 {
     public static NodeResponse From(Node n) => new(n.Id, n.ParentId, n.Kind, n.Name, n.SizeBytes, n.MimeType, n.CreatedAt, n.UpdatedAt);
 }
+
+public sealed record ZipRequest([Required, MinLength(1), MaxLength(1000)] Guid[] NodeIds, [StringLength(NodeName.MaxLength)] string? Name);
+
+/// <param name="Url">
+/// When <paramref name="Direct"/> is true, an absolute URL at the storage provider (S3 presigned GET).
+/// Otherwise a path on this API (<c>/api/v1/content/{token}</c>) that needs no Authorization header.
+/// </param>
+public sealed record ContentLinkResponse(string Url, bool Direct, DateTimeOffset ExpiresAt);
 
 public sealed record PathSegmentResponse(Guid Id, string Name);
 public sealed record NodeDetailsResponse(NodeResponse Node, IReadOnlyList<PathSegmentResponse> Path);
@@ -95,6 +106,64 @@ public sealed class NodesController(AppDbContext db, FileTree tree, AuditLog aud
             .Take(Math.Clamp(limit ?? 50, 1, 200))
             .ToListAsync(ct);
         return Ok(results.Select(NodeResponse.From));
+    }
+
+    /// <summary>
+    /// Downloads a file, honoring <c>Range</c> for seeking. <c>inline=true</c> renders safe types
+    /// (images, video, audio, PDF, plain text) in place; everything else is always a download.
+    /// </summary>
+    [HttpGet("{id:guid}/content")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status206PartialContent)]
+    public async Task<IActionResult> Content(Guid id, [FromQuery] bool inline, CancellationToken ct)
+    {
+        var file = await FindLiveFileAsync(id, ct);
+        return file is null ? FileNotFound() : new NodeContentResult(file, TenantId, inline);
+    }
+
+    /// <summary>
+    /// A short-lived link to the file for clients that cannot send the bearer token (players, web views).
+    /// S3 files get a direct presigned URL unless <c>inline</c> is requested; others go through this API.
+    /// </summary>
+    [HttpPost("{id:guid}/content-link")]
+    [ProducesResponseType<ContentLinkResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ContentLink(Guid id, [FromQuery] bool inline,
+        [FromServices] ContentReader reader, [FromServices] ContentLinkSigner signer, [FromServices] IOptions<StorageOptions> storageOptions, CancellationToken ct)
+    {
+        var file = await FindLiveFileAsync(id, ct);
+        if (file is null) return FileNotFound();
+
+        var lifetime = TimeSpan.FromMinutes(storageOptions.Value.ContentLinkMinutes);
+        var expiresAt = clock.GetUtcNow() + lifetime;
+        if (!inline)
+        {
+            try
+            {
+                var source = await reader.ResolveAsync(TenantId, file, ct);
+                if (await source.Provider.GetDirectDownloadUrlAsync(source.Account, source.ProviderObjectId, file.Name, lifetime, ct) is { } direct)
+                    return Ok(new ContentLinkResponse(direct, Direct: true, expiresAt));
+            }
+            catch (ContentUnavailableException e)
+            {
+                return Error(StatusCodes.Status503ServiceUnavailable, "content_unavailable", e.Message);
+            }
+        }
+
+        var token = signer.Sign(file.Id, TenantId, expiresAt);
+        return Ok(new ContentLinkResponse($"/api/v1/content/{token}{(inline ? "?inline=true" : "")}", Direct: false, expiresAt));
+    }
+
+    /// <summary>Downloads files and folders (recursively) as one streamed zip.</summary>
+    [HttpPost("zip")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Zip(ZipRequest request, CancellationToken ct)
+    {
+        var ids = request.NodeIds.Distinct().ToList();
+        var nodes = await db.Nodes.Where(n => ids.Contains(n.Id) && n.TrashedAt == null).ToListAsync(ct);
+        if (nodes.Count != ids.Count) return NodeNotFound();
+
+        var name = string.IsNullOrWhiteSpace(request.Name) ? (nodes.Count == 1 ? nodes[0].Name : "FreeSpace") : request.Name.Trim();
+        return new ZipResult(nodes, TenantId, name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? name : name + ".zip");
     }
 
     [HttpPost("folders"), MinimumRole(TenantRole.Member)]
@@ -178,6 +247,9 @@ public sealed class NodesController(AppDbContext db, FileTree tree, AuditLog aud
         return NoContent();
     }
 
+    private Task<Node?> FindLiveFileAsync(Guid id, CancellationToken ct) =>
+        db.Nodes.FirstOrDefaultAsync(n => n.Id == id && n.Kind == NodeKind.File && n.TrashedAt == null, ct);
+
     private Task<Node?> FindLiveFolderAsync(Guid id, CancellationToken ct) =>
         db.Nodes.FirstOrDefaultAsync(n => n.Id == id && n.Kind == NodeKind.Folder && n.TrashedAt == null, ct);
 
@@ -198,6 +270,7 @@ public sealed class NodesController(AppDbContext db, FileTree tree, AuditLog aud
     private static string EscapeLike(string value) => value.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");
 
     private ObjectResult NodeNotFound() => NotFoundError("node_not_found", "File or folder not found.");
+    private ObjectResult FileNotFound() => NotFoundError("file_not_found", "File not found.");
     private ObjectResult FolderNotFound() => NotFoundError("folder_not_found", "Folder not found.");
     private ObjectResult NameConflict() => ConflictError("name_conflict", "An item with this name already exists in the folder.");
 

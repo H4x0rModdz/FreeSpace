@@ -18,6 +18,13 @@ internal static class RateLimitingConfiguration
                     http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                     _ => new FixedWindowRateLimiterOptions { PermitLimit = permits, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
             });
+            options.AddPolicy(RateLimitPolicies.Public, http =>
+            {
+                var permits = http.RequestServices.GetRequiredService<IOptions<RateLimitOptions>>().Value.PublicPermitsPerMinute;
+                return RateLimitPartition.GetFixedWindowLimiter(
+                    http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    _ => new FixedWindowRateLimiterOptions { PermitLimit = permits, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
+            });
         });
         return services;
     }

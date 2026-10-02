@@ -33,6 +33,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Encryption:Key", Convert.ToBase64String(new byte[32]));
         builder.UseSetting("Database:MigrateOnStartup", "true");
         builder.UseSetting("RateLimiting:AuthPermitsPerMinute", "100000");
+        builder.UseSetting("RateLimiting:PublicPermitsPerMinute", "100000");
         builder.UseSetting("Storage:BackgroundQuotaSync", "false");
         builder.UseSetting("Storage:BackgroundPurge", "false"); // tests drive the purger directly
         builder.UseSetting("Storage:BackgroundUploadExpiry", "false");

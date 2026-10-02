@@ -28,6 +28,42 @@ public sealed record PresignedChunk(int Index, string Url, DateTimeOffset Expire
 /// <param name="ProviderObjectId">Id that addresses the stored bytes from now on (Drive file id, S3 key).</param>
 public sealed record CompletedUpload(string ProviderObjectId, long SizeBytes);
 
+/// <summary>Inclusive byte range of a stored object.</summary>
+public readonly record struct ByteRange(long From, long To)
+{
+    public long Length => To - From + 1;
+}
+
+/// <summary>The object is gone at the provider (deleted outside FreeSpace).</summary>
+public sealed class StorageObjectMissingException(string message, Exception? inner = null) : Exception(message, inner);
+
+/// <summary>A stream that also disposes what keeps it alive (HTTP response, SDK client).</summary>
+public sealed class OwnedStream(Stream inner, params IDisposable[] owners) : Stream
+{
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+    public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default) => inner.ReadAsync(buffer, ct);
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct) => inner.ReadAsync(buffer, offset, count, ct);
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            inner.Dispose();
+            foreach (var owner in owners) owner.Dispose();
+        }
+        base.Dispose(disposing);
+    }
+}
+
 /// <summary>The upload protocol was violated (out-of-order chunk, wrong size, not supported by the provider).</summary>
 public sealed class UploadProtocolException(string code, string message) : Exception(message)
 {
@@ -64,6 +100,12 @@ public interface IStorageProvider
 
     /// <summary>Discards an unfinished upload. Best effort and idempotent.</summary>
     Task AbortUploadAsync(StorageAccount account, ProviderUpload upload, CancellationToken ct);
+
+    /// <summary>Streams an object, or one byte range of it. Throws <see cref="StorageObjectMissingException"/> if it is gone.</summary>
+    Task<Stream> OpenReadAsync(StorageAccount account, string providerObjectId, ByteRange? range, CancellationToken ct);
+
+    /// <summary>A short-lived URL a client can download from directly, or null when the provider has none (Drive).</summary>
+    Task<string?> GetDirectDownloadUrlAsync(StorageAccount account, string providerObjectId, string fileName, TimeSpan lifetime, CancellationToken ct);
 
     /// <summary>Deletes one stored object. Idempotent: an object that is already gone counts as deleted.</summary>
     Task DeleteObjectAsync(StorageAccount account, string providerObjectId, CancellationToken ct);

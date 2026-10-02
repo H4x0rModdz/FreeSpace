@@ -35,6 +35,25 @@ public static class StorageTestHelpers
             .Single(a => a.Provider == StorageProvider.GoogleDrive);
     }
 
+    /// <summary>Uploads a file through the API (start → chunks via proxy → complete).</summary>
+    public static async Task<FreeSpace.Api.Files.NodeResponse> UploadFileAsync(this HttpClient client, string name, byte[] content,
+        Guid? parentId = null, string mimeType = "application/octet-stream")
+    {
+        var start = await client.PostJsonAsync("/api/v1/uploads", new { fileName = name, sizeBytes = content.LongLength, mimeType, parentId });
+        await start.EnsureStatusAsync(HttpStatusCode.Created);
+        var upload = await start.ReadAsync<FreeSpace.Api.Files.UploadResponse>();
+        for (var index = 0; index < upload.ChunkCount; index++)
+        {
+            var offset = (int)(index * upload.ChunkSize);
+            var length = (int)Math.Min(upload.ChunkSize, content.Length - offset);
+            await (await client.PutAsync($"/api/v1/uploads/{upload.Id}/chunks/{index}", new ByteArrayContent(content, offset, length)))
+                .EnsureStatusAsync(HttpStatusCode.OK);
+        }
+        var complete = await client.PostAsync($"/api/v1/uploads/{upload.Id}/complete", null);
+        await complete.EnsureStatusAsync(HttpStatusCode.Created);
+        return await complete.ReadAsync<FreeSpace.Api.Files.NodeResponse>();
+    }
+
     /// <summary>Reads an account row directly (to see counters the API does not expose, like reservations).</summary>
     public static async Task<StorageAccount> LoadAccountAsync(this ApiFactory factory, Guid accountId)
     {

@@ -189,6 +189,41 @@ public sealed class S3StorageProvider(ISecretProtector protector, IOptions<S3Opt
         }
     }
 
+    public async Task<Stream> OpenReadAsync(StorageAccount account, string providerObjectId, ByteRange? range, CancellationToken ct)
+    {
+        var (config, client) = Open(account);
+        try
+        {
+            var request = new GetObjectRequest { BucketName = config.Bucket, Key = providerObjectId };
+            if (range is { } r) request.ByteRange = new Amazon.S3.Model.ByteRange(r.From, r.To);
+            var response = await Run(() => client.GetObjectAsync(request, ct),
+                notFound: () => new StorageObjectMissingException("The object no longer exists in the bucket."));
+            return new OwnedStream(response.ResponseStream, response, client);
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
+        }
+    }
+
+    public async Task<string?> GetDirectDownloadUrlAsync(StorageAccount account, string providerObjectId, string fileName, TimeSpan lifetime, CancellationToken ct)
+    {
+        var (config, client) = Open(account);
+        using var _ = client;
+        var request = new GetPreSignedUrlRequest
+        {
+            BucketName = config.Bucket,
+            Key = providerObjectId,
+            Verb = HttpVerb.GET,
+            Expires = DateTime.UtcNow.Add(lifetime),
+            Protocol = config.Endpoint?.StartsWith("http://", StringComparison.OrdinalIgnoreCase) == true ? Protocol.HTTP : Protocol.HTTPS,
+        };
+        // Objects are stored under opaque keys; make the browser save them under the real name.
+        request.ResponseHeaderOverrides.ContentDisposition = Files.ContentDispositions.Attachment(fileName);
+        return await client.GetPreSignedURLAsync(request);
+    }
+
     public async Task DeleteObjectAsync(StorageAccount account, string providerObjectId, CancellationToken ct)
     {
         var config = StorageSecrets.ReadConfig<S3Config>(account);

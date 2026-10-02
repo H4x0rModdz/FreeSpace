@@ -79,6 +79,13 @@ public sealed class GoogleDriveStorageProvider(IGoogleApi google, ISecretProtect
         }
     }
 
+    public Task<Stream> OpenReadAsync(StorageAccount account, string providerObjectId, ByteRange? range, CancellationToken ct) =>
+        google.DownloadAsync(RefreshToken(account), providerObjectId, range, ct);
+
+    // Drive has no presigned URLs; handing out an access token would expose the whole Drive.
+    public Task<string?> GetDirectDownloadUrlAsync(StorageAccount account, string providerObjectId, string fileName, TimeSpan lifetime, CancellationToken ct) =>
+        Task.FromResult<string?>(null);
+
     public Task DeleteObjectAsync(StorageAccount account, string providerObjectId, CancellationToken ct) =>
         google.DeleteFileAsync(RefreshToken(account), providerObjectId, ct);
 

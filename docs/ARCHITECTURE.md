@@ -86,7 +86,22 @@ interface IStorageProvider
 }
 ```
 
-Coming with downloads: `OpenReadAsync(replica, range)`.
+Downloads add `OpenReadAsync(account, objectId, range)` (a stream of the object or one byte range)
+and `GetDirectDownloadUrlAsync(...)` (S3 presigned GET; null for Drive).
+
+### Downloads and sharing
+
+- `NodeContentResult` streams one replica (healthy accounts first), honoring a single `Range`.
+  User bytes are served with `nosniff` and a sandboxing CSP; only images, video, audio, PDF and
+  plain text may render inline, so uploaded HTML/SVG can never run script on the API origin.
+- **Content links** are stateless: `base64url(nodeId|tenantId|expiry).HMAC`, with the key derived
+  (HKDF) from the encryption key. They serve players and web views that cannot send a bearer token,
+  and stop working once the file is trashed or deleted. S3 files may instead get a presigned GET.
+- **Zip** downloads stream entry by entry from the providers, preserving folder structure, with
+  limits on item count and total size. ZipArchive's remaining synchronous header writes are
+  buffered so the response is only ever written asynchronously.
+- **Shares** are public links (token stored as a hash) to a file or a folder subtree; every
+  request re-checks that the target is inside the shared subtree and not trashed.
 
 ### Uploads
 
@@ -104,8 +119,8 @@ Coming with downloads: `OpenReadAsync(replica, range)`.
 - Expired or cancelled sessions abort at the provider and release their reservation.
 
 Uploads prefer a **direct data plane** where the client can reach the provider; otherwise the API
-streams. Drive downloads will go through the proxy (handing out the token would expose the whole
-Drive); S3 will use presigned GETs.
+streams. Drive downloads go through the proxy (handing out the token would expose the whole
+Drive); S3 can use presigned GETs.
 
 ### StorageAllocator
 
@@ -141,6 +156,9 @@ cannot overcommit an account or lose updates.
 4. **Uploads** ✅ — resumable chunked sessions (direct to Drive / S3 presigned parts, or streamed
    through the API), allocator with atomic reservations and routing policies, expiry/cleanup,
    CORS for the web app.
-5. **Downloads** — ranged streaming, previews, streamed zip, public shares.
+5. **Downloads** ✅ — ranged streaming, safe inline previews, signed content links (S3 presigned
+   when possible), streamed zip, public shares for files and folders.
 6. **API keys** with per-tenant scopes.
-7. **Extras** — WebDAV, optional per-folder replication, hashing/integrity, desktop client.
+7. **Desktop app** — Avalonia UI client: login, storages, browsing, uploads/downloads, later a
+   virtual drive (Windows Cloud Files API).
+8. **Extras** — WebDAV, optional per-folder replication, hashing/integrity.

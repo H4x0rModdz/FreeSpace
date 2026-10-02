@@ -198,3 +198,17 @@ internal sealed class UploadSessionConfiguration : IEntityTypeConfiguration<Uplo
         b.Property<uint>("Version").IsRowVersion();
     }
 }
+
+internal sealed class ShareConfiguration : IEntityTypeConfiguration<Share>
+{
+    public void Configure(EntityTypeBuilder<Share> b)
+    {
+        b.Property(x => x.TokenHash).HasMaxLength(Lengths.Hash);
+        b.HasIndex(x => x.TokenHash).IsUnique();
+        b.HasIndex(x => new { x.TenantId, x.NodeId });
+        b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        // Deleting the node forever deletes its links; trashing it just makes them stop working.
+        b.HasOne<Node>().WithMany().HasForeignKey(x => x.NodeId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Cascade);
+    }
+}

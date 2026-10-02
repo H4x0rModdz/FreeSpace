@@ -16,6 +16,7 @@ internal static class SecurityConfiguration
         services.AddScoped<CurrentUser>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddSingleton<ISecretProtector, AesGcmSecretProtector>();
+        services.AddSingleton<ContentLinkSigner>();
         services.AddSingleton<TokenService>();
         services.AddScoped<SessionIssuer>();
 

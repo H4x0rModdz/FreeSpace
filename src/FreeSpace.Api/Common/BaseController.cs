@@ -6,6 +6,8 @@ public static class RateLimitPolicies
 {
     /// <summary>Per-IP limit on credential-handling endpoints.</summary>
     public const string Auth = "auth";
+    /// <summary>Per-IP limit on anonymous content endpoints (signed links, public shares).</summary>
+    public const string Public = "public";
 }
 
 /// <summary>
