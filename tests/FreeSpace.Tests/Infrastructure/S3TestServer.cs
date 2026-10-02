@@ -1,4 +1,6 @@
 using System.Text;
+using Amazon.Runtime;
+using Amazon.S3;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 
@@ -28,6 +30,27 @@ public sealed class S3TestServer : IAsyncDisposable
     public Task StartAsync() => _container.StartAsync();
 
     public string GetConnectionString() => $"http://{_container.Hostname}:{_container.GetMappedPublicPort(S3Port)}";
+
+    public AmazonS3Client CreateClient() => new(new BasicAWSCredentials(AccessKey, SecretKey),
+        new AmazonS3Config { ServiceURL = GetConnectionString(), ForcePathStyle = true, AuthenticationRegion = "us-east-1" });
+
+    public async Task<string> CreateBucketAsync()
+    {
+        var bucket = $"b-{Guid.NewGuid():N}"[..20];
+        using var s3 = CreateClient();
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await s3.PutBucketAsync(bucket);
+                return bucket;
+            }
+            catch (Exception) when (attempt < 30)
+            {
+                await Task.Delay(500); // the S3 gateway accepts connections slightly before it is ready
+            }
+        }
+    }
 
     public ValueTask DisposeAsync() => _container.DisposeAsync();
 }

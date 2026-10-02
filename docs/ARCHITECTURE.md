@@ -1,100 +1,127 @@
-# FreeSpace — Arquitetura
+# FreeSpace — Architecture
 
-FreeSpace agrega várias contas de armazenamento (Google Drive, S3-compatíveis) num único
-espaço virtual, multi-tenant.
+FreeSpace aggregates multiple storage accounts (Google Drive, S3-compatible) into a single
+virtual, multi-tenant space.
 
-## Decisões
+## Decisions
 
-| Tema | Decisão |
+| Topic | Decision |
 |---|---|
-| Runtime | .NET 10, ASP.NET Core Minimal APIs |
-| Banco | PostgreSQL 18 + EF Core 10 (Npgsql), nomes em `snake_case` |
-| Deploy | Docker Compose (`postgres` + `api`) |
-| IDs | `Guid.CreateVersion7()` (ordenáveis por tempo, sem fragmentar índice) |
-| Senhas | Argon2id (parâmetros OWASP: m=19 MiB, t=2, p=1) |
-| Sessão | JWT de acesso curto (15 min) + refresh token opaco com **rotação e detecção de reuso** |
-| Erros | `ProblemDetails` (RFC 9457) com extensão `code` estável |
-| Tenancy | Banco compartilhado, coluna `tenant_id` + **query filter global do EF** (fail-closed) |
-| Jobs | `BackgroundService` + tabela de jobs no Postgres (sem Redis por enquanto) |
-| API | Versionada em `/api/v1`. Frontend novo, contrato livre |
+| Runtime | .NET 10, ASP.NET Core controllers, API reference via Scalar |
+| Database | PostgreSQL 18 + EF Core 10 (Npgsql), `snake_case` names |
+| Deployment | Docker Compose (`postgres` + `api`) |
+| IDs | `Guid.CreateVersion7()` (time-ordered, no index fragmentation) |
+| Passwords | Argon2id (OWASP parameters: m=19 MiB, t=2, p=1) |
+| Sessions | Short-lived JWT access token (15 min) + opaque refresh token with **rotation and reuse detection** |
+| Errors | `ProblemDetails` (RFC 9457) with a stable `code` extension |
+| Tenancy | Shared database, `tenant_id` column + **global EF query filter** (fail-closed) |
+| Background work | `BackgroundService` workers backed by Postgres state (no Redis for now) |
+| API | Versioned under `/api/v1`. New frontend, so the contract is free to evolve |
+
+## API layer
+
+- `BaseController` owns the error contract (ProblemDetails + `code`). Only session-less
+  routes derive from it directly: register, login, refresh, OAuth callbacks.
+- `SecureController` derives from it and guards everything else: valid session, active tenant,
+  and `[MinimumRole(...)]` (on the controller or the action; the action wins). It exposes the
+  caller (`UserId`, `TenantId`, `Role`) and permission helpers for target-dependent checks.
+- `Program.cs` only composes; each concern registers itself from `Configurations/`
+  (options, persistence, security, rate limiting, forwarded headers, services, API pipeline).
 
 ## Multi-tenancy
 
-- `Tenant` = espaço de trabalho. Todo conteúdo (contas de storage, arquivos, shares, API keys,
-  auditoria) pertence a um tenant.
-- `User` é global; `Membership` liga usuário ↔ tenant com papel `Viewer < Member < Admin < Owner`.
-- Registro cria o usuário **e** um tenant pessoal onde ele é `Owner`.
-- A sessão guarda o tenant ativo; o access token carrega `tid`. Trocar de tenant
-  (`POST /auth/switch-tenant`) emite novo access token e invalida os anteriores daquela sessão.
-- A cada request autenticado validamos sessão + membership no banco (revogação imediata
-  em logout/remoção de membro) e injetamos o papel atual como claim — o papel no JWT nunca é confiado.
-- Entidades `ITenantOwned` recebem filtro global `tenant_id = <tenant atual>`. Sem tenant no
-  contexto (jobs, requests anônimos) o filtro não retorna nada; acesso cross-tenant exige
-  `IgnoreQueryFilters()` explícito.
-- Convites por link: token de uso único (armazenado como hash), expira em 7 dias, papel ≤ papel de quem convida.
+- `Tenant` = a workspace. All content (storage accounts, files, shares, API keys, audit log)
+  belongs to a tenant.
+- `User` is global; `Membership` links user ↔ tenant with a role `Viewer < Member < Admin < Owner`.
+- Registration creates the user **and** a personal tenant where they are `Owner`.
+- The session stores the active tenant; the access token carries `tid`. Switching tenants
+  (`POST /auth/switch-tenant`) issues a new access token and invalidates the session's previous ones.
+- Every authenticated request re-validates session + membership against the database (immediate
+  revocation on logout/member removal) and injects the current role as a claim. The role inside
+  the JWT is never trusted.
+- `ITenantOwned` entities get a global filter `tenant_id = <current tenant>`. With no tenant in
+  context (background jobs, anonymous requests) the filter returns nothing; cross-tenant access
+  requires an explicit `IgnoreQueryFilters()`.
+- Invitations are links: single-use token (stored as a hash), 7-day expiry, role ≤ the inviter's role.
 
-## Modelo de armazenamento (fases 2+)
+## Storage model
 
-Separação entre o que o usuário vê e onde os bytes estão:
+What the user sees is separate from where the bytes live:
 
 ```
-Node (árvore virtual: pasta/arquivo, por tenant)
-  └── StoredObject (bytes lógicos: tamanho, sha256, mime)
-        └── Replica (cópia física: StorageAccount + id no provider)
-StorageAccount (Google Drive / S3, credenciais criptografadas, quota, status)
+Node (virtual tree: folder/file, per tenant)
+  └── StoredObject (logical bytes: size, sha256, mime type)
+        └── Replica (physical copy: StorageAccount + provider object id)
+StorageAccount (Google Drive / S3, encrypted credentials, quota, status)
 ```
 
-- **Pastas existem só no banco.** No provider os objetos ficam numa estrutura plana
-  (`FreeSpace/<tenant>/<object-id>`). Mover/renomear é operação só de banco; um arquivo pode
-  ser realocado entre contas sem mudar o caminho virtual.
-- **Lixeira** = `Node.TrashedAt`. Exclusão definitiva enfileira a remoção das réplicas.
-- **Reconciliação** (job) compara réplicas com o provider e marca divergências — o provider
-  nunca é a fonte da verdade da árvore.
+- **Folders exist only in the database.** At the provider, objects live in a flat layout
+  (`FreeSpace/<tenant>/<object-id>`). Move/rename are database-only operations, and a file can be
+  relocated between accounts without changing its virtual path.
+- **Sibling names are unique** (case- and Unicode-insensitive) among live nodes, enforced by a
+  partial unique index that also covers the root (`NULLS NOT DISTINCT`).
+- **Trash** = `Node.TrashedAt` + `TrashRootId`: everything trashed together restores together.
+  Permanent deletion removes the nodes and queues orphaned objects' replicas; a background
+  purger deletes them at the providers (idempotently).
+- **Reconciliation** (planned job) compares replicas with the providers and flags divergence.
+  The provider is never the source of truth for the tree.
 
 ### IStorageProvider
+
+Implemented today:
 
 ```csharp
 interface IStorageProvider
 {
-    Task<UploadTarget> BeginUploadAsync(...);     // sessão resumable do Drive / multipart S3
-    Task<UploadProgress> UploadChunkAsync(...);   // quando o backend faz proxy
-    Task<Stream> OpenReadAsync(replica, range);  // download com Range
-    Task DeleteAsync(replica);
-    Task<QuotaInfo> GetQuotaAsync(account);
+    Task<QuotaSnapshot> GetQuotaAsync(StorageAccount account, CancellationToken ct);
+    Task DeleteObjectAsync(StorageAccount account, string providerObjectId, CancellationToken ct);
+    Task DisconnectAsync(StorageAccount account, CancellationToken ct);
 }
 ```
 
-Uploads preferem **data plane direto**: o browser recebe a session URI resumable do Drive ou
-URLs presigned do S3 e envia os bytes direto ao storage; o backend só controla (init/commit).
-Downloads do Drive passam por proxy (entregar o token exporia o Drive inteiro); S3 usa presigned GET.
+Coming with uploads and downloads:
+
+```csharp
+Task<UploadTarget> BeginUploadAsync(...);     // Drive resumable session / S3 multipart
+Task<Stream> OpenReadAsync(replica, range);   // ranged download
+```
+
+Uploads prefer a **direct data plane**: the browser receives the Drive resumable session URI or
+S3 presigned URLs and sends the bytes straight to the storage; the backend only controls
+(init/commit). Drive downloads go through the proxy (handing out the token would expose the whole
+Drive); S3 uses presigned GETs.
 
 ### StorageAllocator
 
-Escolhe a conta de destino considerando: espaço livre (menos reservas de uploads em andamento),
-status/saúde da conta (`NeedsReauth` fica fora), limite diário do Google (750 GB/dia/conta),
-política do tenant (`most-available`, `round-robin`, `priority`).
+Chooses the destination account based on: free space (minus reservations for in-flight uploads),
+account status/health (`NeedsReauth` is excluded), Google's daily upload limit (750 GB/day per
+account), and the tenant policy (`most-available`, `round-robin`, `priority`).
 
-## Segurança — regras de projeto
+## Security rules
 
-- Nunca alterar permissões de compartilhamento no provider (nada de tornar arquivos públicos `anyone`).
-- Nada de endpoints de update/backup/restore pela API.
-- Login Google só vincula a usuário existente se o e-mail do Google for verificado **e** o
-  usuário local tiver e-mail verificado; caso contrário exige login + vínculo explícito.
-- Endpoints S3 customizados validados contra SSRF (bloquear IPs privados/loopback/link-local).
-- Tokens públicos (share, convite, preview) sempre armazenados só como hash.
-- Credenciais de providers criptografadas (AES-GCM, chave fora do banco).
-- Rate limit nas rotas de autenticação; `ForwardedHeaders` só com proxies conhecidos.
+- Never change sharing permissions at the provider (no making files public to `anyone`).
+- No update/backup/restore endpoints in the API.
+- Google sign-in only links to an existing user when the Google e-mail is verified **and** the
+  local user's e-mail is verified; otherwise it requires a login plus an explicit link.
+- Custom S3 endpoints are validated against SSRF (private/loopback/link-local addresses blocked,
+  including on the resolved IP at connect time).
+- Public tokens (share, invitation, preview) are always stored as hashes only.
+- Provider credentials are encrypted (AES-GCM, key kept outside the database).
+- Rate limiting on authentication routes; `ForwardedHeaders` only from known proxies.
 
-## Fases
+## Phases
 
-1. **Fundação** ✅ — solution, Docker, Postgres/EF, auth (registro, login, refresh rotativo,
-   logout, troca de tenant), tenants, membros, convites, auditoria, ProblemDetails, rate limit,
-   health checks, testes de integração com Testcontainers.
-2. **Storage accounts** ✅ — `IStorageProvider`, Google OAuth com escopo `drive.file`, S3 com
-   validação SSRF (inclusive no IP resolvido, contra DNS rebinding), credenciais AES-GCM ligadas
-   ao id da conta, sync de quota em background, status `NeedsReauth`.
-3. **Árvore virtual** — `Node`/`StoredObject`/`Replica`, pastas, mover/renomear, lixeira, busca, paginação.
-4. **Uploads** — sessões resumable (Drive direto, S3 multipart presigned), allocator, expiração/limpeza.
-5. **Downloads** — streaming com Range, preview, zip em streaming, shares públicos.
-6. **API keys** com escopos por tenant.
-7. **Extras** — WebDAV, replicação opcional por pasta, hash/integridade, cliente desktop.
+1. **Foundation** ✅ — solution, Docker, Postgres/EF, auth (register, login, rotating refresh,
+   logout, tenant switching), tenants, members, invitations, auditing, ProblemDetails, rate
+   limiting, health checks, integration tests with Testcontainers.
+2. **Storage accounts** ✅ — `IStorageProvider`, Google OAuth with the `drive.file` scope, S3 with
+   SSRF validation (also on the resolved IP, against DNS rebinding), AES-GCM credentials bound to
+   the account id, background quota sync, `NeedsReauth` status.
+3. **Virtual tree** ✅ — `Node`/`StoredObject`/`Replica`, folders, move/rename (with a cycle guard),
+   batch trash with restore, trigram search, keyset pagination, asynchronous replica purge at the
+   providers.
+4. **Uploads** — resumable sessions (direct to Drive, S3 presigned multipart), allocator,
+   expiry/cleanup.
+5. **Downloads** — ranged streaming, previews, streamed zip, public shares.
+6. **API keys** with per-tenant scopes.
+7. **Extras** — WebDAV, optional per-folder replication, hashing/integrity, desktop client.

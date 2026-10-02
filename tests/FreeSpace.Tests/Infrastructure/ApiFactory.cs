@@ -34,6 +34,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Database:MigrateOnStartup", "true");
         builder.UseSetting("RateLimiting:AuthPermitsPerMinute", "100000");
         builder.UseSetting("Storage:BackgroundQuotaSync", "false");
+        builder.UseSetting("Storage:BackgroundPurge", "false"); // tests drive the purger directly
         // The S3 test server runs on localhost over HTTP; production defaults reject both.
         builder.UseSetting("Storage:S3:AllowPrivateEndpoints", "true");
         builder.UseSetting("Storage:S3:AllowInsecureEndpoints", "true");

@@ -31,6 +31,8 @@ public interface IGoogleApi
     string BuildAuthorizationUrl(string state);
     Task<GoogleConnection> ExchangeCodeAsync(string code, CancellationToken ct);
     Task<GoogleQuota> GetQuotaAsync(string refreshToken, CancellationToken ct);
+    /// <summary>Deletes a Drive file; succeeds if it no longer exists.</summary>
+    Task DeleteFileAsync(string refreshToken, string fileId, CancellationToken ct);
     Task RevokeAsync(string refreshToken, CancellationToken ct);
 }
 
@@ -88,7 +90,32 @@ public sealed class GoogleApi(IOptions<GoogleOptions> options) : IGoogleApi
         return new GoogleConnection(identity.Subject, identity.Email, identity.Name, token.RefreshToken);
     }
 
-    public async Task<GoogleQuota> GetQuotaAsync(string refreshToken, CancellationToken ct)
+    public Task<GoogleQuota> GetQuotaAsync(string refreshToken, CancellationToken ct) =>
+        WithDriveAsync(refreshToken, async drive =>
+        {
+            var request = drive.About.Get();
+            request.Fields = "storageQuota(limit,usage)";
+            var about = await request.ExecuteAsync(ct);
+            // A null limit means unlimited storage (some Workspace plans).
+            return new GoogleQuota(about.StorageQuota?.Limit, about.StorageQuota?.Usage ?? 0);
+        });
+
+    public Task DeleteFileAsync(string refreshToken, string fileId, CancellationToken ct) =>
+        WithDriveAsync(refreshToken, async drive =>
+        {
+            try
+            {
+                await drive.Files.Delete(fileId).ExecuteAsync(ct);
+            }
+            catch (GoogleApiException e) when (e.HttpStatusCode == HttpStatusCode.NotFound)
+            {
+                // Already gone (deleted by the user in Drive): deletion is idempotent.
+            }
+            return true;
+        });
+
+    /// <summary>Runs a Drive call with the account's credentials and maps Google failures to storage exceptions.</summary>
+    private async Task<T> WithDriveAsync<T>(string refreshToken, Func<DriveService, Task<T>> call)
     {
         using var flow = CreateFlow();
         var credential = new UserCredential(flow, FlowUserId, new TokenResponse { RefreshToken = refreshToken });
@@ -96,11 +123,7 @@ public sealed class GoogleApi(IOptions<GoogleOptions> options) : IGoogleApi
 
         try
         {
-            var request = drive.About.Get();
-            request.Fields = "storageQuota(limit,usage)";
-            var about = await request.ExecuteAsync(ct);
-            // A null limit means unlimited storage (some Workspace plans).
-            return new GoogleQuota(about.StorageQuota?.Limit, about.StorageQuota?.Usage ?? 0);
+            return await call(drive);
         }
         catch (TokenResponseException e) when (e.Error.Error is "invalid_grant" or "unauthorized_client")
         {

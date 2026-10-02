@@ -87,6 +87,13 @@ public sealed class StorageAccount : Entity, ITenantOwned
         UpdatedAt = now;
     }
 
+    /// <summary>Applies a usage change made by FreeSpace itself (upload committed, replica purged).</summary>
+    public void AdjustUsage(long deltaBytes, DateTimeOffset now)
+    {
+        UsedBytes = Math.Max(0, UsedBytes + deltaBytes);
+        UpdatedAt = now;
+    }
+
     public void MarkNeedsReauth(string error, DateTimeOffset now)
     {
         Status = StorageAccountStatus.NeedsReauth;

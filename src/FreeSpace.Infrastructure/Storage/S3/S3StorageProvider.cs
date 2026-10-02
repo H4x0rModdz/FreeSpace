@@ -63,6 +63,14 @@ public sealed class S3StorageProvider(ISecretProtector protector, IOptions<S3Opt
         return new QuotaSnapshot(config.QuotaBytes, UsedBytes: null);
     }
 
+    public async Task DeleteObjectAsync(StorageAccount account, string providerObjectId, CancellationToken ct)
+    {
+        var config = StorageSecrets.ReadConfig<S3Config>(account);
+        using var client = CreateClient(config, StorageSecrets.Read<S3Secret>(account, protector));
+        // S3 DeleteObject succeeds for missing keys, which gives us idempotency for free.
+        await Run(() => client.DeleteObjectAsync(config.Bucket, providerObjectId, ct));
+    }
+
     public Task DisconnectAsync(StorageAccount account, CancellationToken ct) => Task.CompletedTask; // static keys: nothing to revoke
 
     private AmazonS3Client CreateClient(S3Config config, S3Secret secret)

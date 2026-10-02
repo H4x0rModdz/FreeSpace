@@ -24,6 +24,9 @@ public interface IStorageProvider
     /// <summary>Reads quota and, in doing so, proves the credentials still work.</summary>
     Task<QuotaSnapshot> GetQuotaAsync(StorageAccount account, CancellationToken ct);
 
+    /// <summary>Deletes one stored object. Idempotent: an object that is already gone counts as deleted.</summary>
+    Task DeleteObjectAsync(StorageAccount account, string providerObjectId, CancellationToken ct);
+
     /// <summary>Best-effort cleanup at the provider when an account is removed (e.g. revoke OAuth grant).</summary>
     Task DisconnectAsync(StorageAccount account, CancellationToken ct);
 }

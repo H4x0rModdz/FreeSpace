@@ -10,8 +10,8 @@ Under the hood, each file goes to an account with available space, following the
 choose. For you it is still just `/Photos/trip.jpg`, without needing to know which account holds it.
 
 > **Status:** under active development. Done: authentication, multi-tenancy, invitations,
-> auditing, and connecting storage accounts (Google Drive and S3) with quota tracking. The file
-> tree, uploads and downloads come in the next phases. See the [roadmap](docs/ARCHITECTURE.md#fases).
+> auditing, connecting storage accounts (Google Drive and S3) with quota tracking, and the virtual
+> file tree (folders, move/rename, trash, search). Uploads and downloads come in the next phases. See the [roadmap](docs/ARCHITECTURE.md#phases).
 
 ## Why it exists
 
@@ -135,7 +135,18 @@ Errors follow RFC 9457 (`application/problem+json`) and carry a stable `code` fi
 | POST | `/api/v1/storage-accounts/s3` | Admin+. Validates endpoint and keys (writes and deletes a probe object) |
 | PATCH | `/api/v1/storage-accounts/{id}` | Admin+. Name, priority, enable/disable |
 | POST | `/api/v1/storage-accounts/{id}/sync` | Admin+. Refresh quota now |
-| DELETE | `/api/v1/storage-accounts/{id}` | Admin+. Remove (for Google, also revokes the granted access) |
+| DELETE | `/api/v1/storage-accounts/{id}` | Admin+. Remove (for Google, also revokes the granted access). Refused while it still holds files |
+| GET | `/api/v1/nodes?parentId=&cursor=&limit=` | Folder contents: folders first, then by name, keyset-paginated |
+| GET | `/api/v1/nodes/{id}` | A file or folder plus its path from the root (breadcrumbs) |
+| GET | `/api/v1/nodes/search?q=&kind=` | Case-insensitive name search across the tree |
+| POST | `/api/v1/nodes/folders` | Member+. Create a folder |
+| PATCH | `/api/v1/nodes/{id}` | Member+. Rename |
+| POST | `/api/v1/nodes/{id}/move` | Member+. Move into another folder (or the root) |
+| POST | `/api/v1/nodes/{id}/trash` | Member+. Move to the trash, including everything inside |
+| GET | `/api/v1/trash` | Trash entries |
+| POST | `/api/v1/trash/{id}/restore` | Member+. Restore an entry and its contents (renamed on clash) |
+| DELETE | `/api/v1/trash/{id}` | Member+. Delete forever; the bytes are purged from the providers in the background |
+| DELETE | `/api/v1/trash` | Admin+. Empty the trash |
 | GET | `/health/live`, `/health/ready` | Public |
 
 Roles: `viewer < member < admin < owner`. Admins manage and grant only roles below admin,

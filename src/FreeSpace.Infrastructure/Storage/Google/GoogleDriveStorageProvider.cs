@@ -17,6 +17,9 @@ public sealed class GoogleDriveStorageProvider(IGoogleApi google, ISecretProtect
         return new QuotaSnapshot(quota.LimitBytes, quota.UsageBytes);
     }
 
+    public async Task DeleteObjectAsync(StorageAccount account, string providerObjectId, CancellationToken ct) =>
+        await google.DeleteFileAsync(StorageSecrets.Read<GoogleSecret>(account, protector).RefreshToken, providerObjectId, ct);
+
     public async Task DisconnectAsync(StorageAccount account, CancellationToken ct)
     {
         try

@@ -117,7 +117,10 @@ public sealed class StorageAccountsController(AppDbContext db, AuditLog audit, T
         var account = await FindAsync(id, ct);
         if (account is null) return AccountNotFound();
 
-        // TODO(phase 3): refuse (or migrate data first) while the account still holds file replicas.
+        // Removing the account would orphan the bytes it holds; files must be deleted (or moved, later) first.
+        if (await db.Replicas.AnyAsync(r => r.StorageAccountId == account.Id, ct))
+            return ConflictError("storage_account_in_use", "This storage account still holds files. Delete them before removing the account.");
+
         await providers.Get(account.Provider).DisconnectAsync(account, ct);
         db.StorageAccounts.Remove(account);
         audit.Record(TenantId, UserId, AuditActions.StorageRemoved, "storage_account", account.Id, new { account.Provider, account.DisplayName });

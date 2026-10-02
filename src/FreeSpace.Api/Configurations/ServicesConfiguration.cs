@@ -1,12 +1,14 @@
 using FreeSpace.Api.Auditing;
+using FreeSpace.Api.Files;
 using FreeSpace.Api.StorageAccounts;
+using FreeSpace.Infrastructure.Files;
 using FreeSpace.Infrastructure.Storage;
 using FreeSpace.Infrastructure.Storage.Google;
 using FreeSpace.Infrastructure.Storage.S3;
 
 namespace FreeSpace.Api.Configurations;
 
-/// <summary>Application services: auditing, storage providers and background workers.</summary>
+/// <summary>Application services: auditing, storage providers, the file tree and background workers.</summary>
 internal static class ServicesConfiguration
 {
     public static IServiceCollection AddFreeSpaceServices(this IServiceCollection services)
@@ -22,7 +24,11 @@ internal static class ServicesConfiguration
         services.AddSingleton<StorageProviderRegistry>();
         services.AddScoped<StorageAccountService>();
 
+        services.AddScoped<FileTree>();
+        services.AddScoped<ReplicaPurger>();
+
         services.AddHostedService<QuotaSyncWorker>();
+        services.AddHostedService<ReplicaPurgeWorker>();
         return services;
     }
 }

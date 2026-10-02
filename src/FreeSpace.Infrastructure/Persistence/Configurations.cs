@@ -1,4 +1,5 @@
 using FreeSpace.Domain.Auditing;
+using FreeSpace.Domain.Files;
 using FreeSpace.Domain.Identity;
 using FreeSpace.Domain.Storage;
 using FreeSpace.Domain.Tenancy;
@@ -118,5 +119,61 @@ internal sealed class OAuthStateConfiguration : IEntityTypeConfiguration<OAuthSt
         b.HasIndex(x => x.StateHash).IsUnique();
         b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class NodeConfiguration : IEntityTypeConfiguration<Node>
+{
+    public void Configure(EntityTypeBuilder<Node> b)
+    {
+        b.Property(x => x.Name).HasMaxLength(NodeName.MaxLength);
+        b.Property(x => x.NormalizedName).HasMaxLength(NodeName.MaxLength);
+        b.Property(x => x.MimeType).HasMaxLength(255);
+        b.Ignore(x => x.IsFolder);
+        b.Ignore(x => x.IsTrashed);
+
+        // Live siblings must have distinct names; root items (parent NULL) count as siblings too.
+        b.HasIndex(x => new { x.TenantId, x.ParentId, x.NormalizedName })
+            .IsUnique()
+            .HasFilter("trashed_at IS NULL")
+            .AreNullsDistinct(false);
+        b.HasIndex(x => new { x.TenantId, x.TrashRootId });
+        b.HasIndex(x => x.ParentId);
+        b.HasIndex(x => x.ObjectId);
+        b.HasIndex(x => x.Name).HasMethod("gin").HasOperators("gin_trgm_ops");
+
+        b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        // Subtrees are deleted in one statement, which NO ACTION allows (checked at statement end).
+        b.HasOne<Node>().WithMany().HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.NoAction);
+        b.HasOne<StoredObject>().WithMany().HasForeignKey(x => x.ObjectId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class StoredObjectConfiguration : IEntityTypeConfiguration<StoredObject>
+{
+    public void Configure(EntityTypeBuilder<StoredObject> b)
+    {
+        b.ToTable("stored_objects");
+        b.Property(x => x.MimeType).HasMaxLength(255);
+        b.Property(x => x.Sha256).HasMaxLength(64);
+        b.HasIndex(x => x.Status);
+        b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class ReplicaConfiguration : IEntityTypeConfiguration<Replica>
+{
+    public void Configure(EntityTypeBuilder<Replica> b)
+    {
+        b.Property(x => x.ProviderObjectId).HasMaxLength(1024);
+        b.Property(x => x.LastError).HasMaxLength(1000);
+        b.HasIndex(x => x.Status);
+        b.HasIndex(x => x.ObjectId);
+        b.HasIndex(x => x.StorageAccountId);
+        b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne<StoredObject>().WithMany().HasForeignKey(x => x.ObjectId).OnDelete(DeleteBehavior.Cascade);
+        // An account with replicas cannot be removed (checked by the API); NO ACTION lets tenant deletion cascade.
+        b.HasOne<StorageAccount>().WithMany().HasForeignKey(x => x.StorageAccountId).OnDelete(DeleteBehavior.NoAction);
     }
 }

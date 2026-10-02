@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using FreeSpace.Domain.Auditing;
 using FreeSpace.Domain.Common;
+using FreeSpace.Domain.Files;
 using FreeSpace.Domain.Identity;
 using FreeSpace.Domain.Storage;
 using FreeSpace.Domain.Tenancy;
@@ -20,6 +21,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<StorageAccount> StorageAccounts => Set<StorageAccount>();
     public DbSet<OAuthState> OAuthStates => Set<OAuthState>();
+    public DbSet<Node> Nodes => Set<Node>();
+    public DbSet<StoredObject> StoredObjects => Set<StoredObject>();
+    public DbSet<Replica> Replicas => Set<Replica>();
 
     // Referenced by the tenant query filter; EF re-evaluates it per context instance.
     private Guid? CurrentTenantId => tenantContext.TenantId;
@@ -30,10 +34,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
         configurationBuilder.Properties<TenantRole>().HaveConversion<string>().HaveMaxLength(32);
         configurationBuilder.Properties<StorageProvider>().HaveConversion<string>().HaveMaxLength(32);
         configurationBuilder.Properties<StorageAccountStatus>().HaveConversion<string>().HaveMaxLength(32);
+        configurationBuilder.Properties<NodeKind>().HaveConversion<string>().HaveMaxLength(32);
+        configurationBuilder.Properties<StoredObjectStatus>().HaveConversion<string>().HaveMaxLength(32);
+        configurationBuilder.Properties<ReplicaStatus>().HaveConversion<string>().HaveMaxLength(32);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.HasPostgresExtension("pg_trgm"); // trigram index for name search
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
         ApplyTenantFilters(modelBuilder);
     }

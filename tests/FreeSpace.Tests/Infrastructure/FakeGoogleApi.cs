@@ -11,6 +11,7 @@ public sealed class FakeGoogleApi : IGoogleApi
 
     public GoogleQuota Quota { get; set; } = new(LimitBytes: 15L << 30, UsageBytes: 1L << 30);
     public ConcurrentDictionary<string, bool> RevokedTokens { get; } = new();
+    public ConcurrentDictionary<string, bool> DeletedFiles { get; } = new();
     public string? LastState { get; private set; }
 
     public bool IsConfigured => true;
@@ -38,6 +39,13 @@ public sealed class FakeGoogleApi : IGoogleApi
         RevokedTokens.ContainsKey(refreshToken)
             ? throw new StorageAuthException("invalid_grant")
             : Task.FromResult(Quota);
+
+    public Task DeleteFileAsync(string refreshToken, string fileId, CancellationToken ct)
+    {
+        if (RevokedTokens.ContainsKey(refreshToken)) throw new StorageAuthException("invalid_grant");
+        DeletedFiles[fileId] = true;
+        return Task.CompletedTask;
+    }
 
     public Task RevokeAsync(string refreshToken, CancellationToken ct)
     {

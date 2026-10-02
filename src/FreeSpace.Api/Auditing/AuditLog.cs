@@ -22,6 +22,13 @@ public static class AuditActions
     public const string StorageReconnected = "storage.reconnected";
     public const string StorageUpdated = "storage.updated";
     public const string StorageRemoved = "storage.removed";
+    public const string FolderCreated = "node.folder_created";
+    public const string NodeRenamed = "node.renamed";
+    public const string NodeMoved = "node.moved";
+    public const string NodeTrashed = "node.trashed";
+    public const string NodeRestored = "node.restored";
+    public const string NodeDeleted = "node.deleted";
+    public const string TrashEmptied = "trash.emptied";
 }
 
 /// <summary>

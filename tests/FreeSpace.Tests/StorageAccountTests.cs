@@ -1,7 +1,5 @@
 using System.Net;
 using System.Text.Json;
-using Amazon.Runtime;
-using Amazon.S3;
 using FreeSpace.Api.StorageAccounts;
 using FreeSpace.Domain.Storage;
 using FreeSpace.Domain.Tenancy;
@@ -29,24 +27,7 @@ public sealed class StorageAccountTests(ApiFactory factory)
         return await AnonymousClient().GetAsync($"/api/v1/storage-accounts/google/callback?code={code}&state={Uri.EscapeDataString(state)}");
     }
 
-    private async Task<string> CreateBucketAsync()
-    {
-        var bucket = $"b-{Guid.NewGuid():N}"[..20];
-        using var s3 = new AmazonS3Client(new BasicAWSCredentials(S3TestServer.AccessKey, S3TestServer.SecretKey),
-            new AmazonS3Config { ServiceURL = factory.S3.GetConnectionString(), ForcePathStyle = true, AuthenticationRegion = "us-east-1" });
-        for (var attempt = 1; ; attempt++)
-        {
-            try
-            {
-                await s3.PutBucketAsync(bucket);
-                return bucket;
-            }
-            catch (Exception) when (attempt < 30)
-            {
-                await Task.Delay(500); // the S3 gateway accepts connections slightly before it is ready
-            }
-        }
-    }
+    private Task<string> CreateBucketAsync() => factory.S3.CreateBucketAsync();
 
     private object S3Request(string bucket, string? secret = null, string? endpoint = null) => new
     {

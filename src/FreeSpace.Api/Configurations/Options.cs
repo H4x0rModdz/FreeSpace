@@ -46,5 +46,7 @@ public sealed class AppOptions
 public sealed class StorageOptions
 {
     public bool BackgroundQuotaSync { get; set; } = true;
+    /// <summary>Removes bytes of permanently deleted files from the providers.</summary>
+    public bool BackgroundPurge { get; set; } = true;
     [Range(1, 1440)] public int QuotaSyncMinutes { get; set; } = 15;
 }
