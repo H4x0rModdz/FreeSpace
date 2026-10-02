@@ -16,9 +16,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     public S3TestServer S3 { get; } = new();
     public FakeGoogleApi Google { get; } = new();
 
-    public async Task InitializeAsync() => await Task.WhenAll(_postgres.StartAsync(), S3.StartAsync());
+    public async ValueTask InitializeAsync() => await Task.WhenAll(_postgres.StartAsync(), S3.StartAsync());
 
-    async Task IAsyncLifetime.DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         await base.DisposeAsync();
         await _postgres.DisposeAsync();

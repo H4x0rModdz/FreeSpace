@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FreeSpace.Desktop.Core.ViewModels"
+             x:Class="FreeSpace.Desktop.Views.LoginView"
+             x:DataType="vm:LoginViewModel">
+  <Grid>
+    <Border Classes="card" Width="440" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="36,34">
+      <StackPanel Spacing="14">
+        <StackPanel Spacing="6" Margin="0,0,0,10">
+          <TextBlock Classes="display" FontSize="30" Text="FreeSpace ✦">
+            <TextBlock.Foreground>
+              <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                <GradientStop Offset="0" Color="#1E1B4B" />
+                <GradientStop Offset="0.55" Color="#0A7BE0" />
+                <GradientStop Offset="1" Color="#B14BFF" />
+              </LinearGradientBrush>
+            </TextBlock.Foreground>
+          </TextBlock>
+          <TextBlock Classes="muted" Text="Every drive you own, in one place." />
+        </StackPanel>
+
+        <TextBlock Classes="title" FontSize="14" Text="{Binding Title}" />
+
+        <TextBox PlaceholderText="Server address" Text="{Binding ServerUrl}" />
+        <TextBox PlaceholderText="Your name" Text="{Binding Name}" IsVisible="{Binding IsRegistering}" />
+        <TextBox PlaceholderText="E-mail" Text="{Binding Email}" />
+        <TextBox PlaceholderText="Password" PasswordChar="•" Text="{Binding Password}" />
+
+        <TextBlock Classes="error" Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+        <Button Content="{Binding SubmitText}" Command="{Binding SubmitCommand}" IsDefault="True"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Classes="gel" Padding="16,13" Margin="0,6,0,0" />
+        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
+        <Button Classes="flat" Content="{Binding ToggleText}" Command="{Binding ToggleCommand}" HorizontalAlignment="Center" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

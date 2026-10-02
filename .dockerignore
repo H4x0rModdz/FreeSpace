@@ -30,3 +30,7 @@ docs/
 docker-compose*.yml
 Dockerfile
 .dockerignore
+
+# The image only needs the API; desktop app sources stay out of the build context.
+src/FreeSpace.Desktop/
+src/FreeSpace.Desktop.Core/

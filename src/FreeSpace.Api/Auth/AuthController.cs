@@ -16,30 +16,6 @@ using DomainUser = FreeSpace.Domain.Identity.User;
 
 namespace FreeSpace.Api.Auth;
 
-public sealed record RegisterRequest(
-    [Required, StringLength(200, MinimumLength = 1)] string Name,
-    [Required, EmailAddress, StringLength(320)] string Email,
-    [Required, StringLength(128, MinimumLength = 10)] string Password,
-    [StringLength(200, MinimumLength = 1)] string? TenantName);
-
-public sealed record LoginRequest(
-    [Required, StringLength(320)] string Email,
-    [Required, StringLength(128)] string Password,
-    Guid? TenantId);
-
-public sealed record RefreshRequest([Required, StringLength(512)] string RefreshToken);
-
-public sealed record SwitchTenantRequest([Required] Guid TenantId);
-
-public sealed record AccessTokenResponse(string AccessToken, DateTimeOffset AccessTokenExpiresAt)
-{
-    public string TokenType => "Bearer";
-}
-
-public sealed record MeResponse(MeUser User, MeTenant Tenant);
-public sealed record MeUser(Guid Id, string Email, string Name, bool EmailVerified);
-public sealed record MeTenant(Guid Id, string Name, TenantRole Role);
-
 /// <summary>Anonymous endpoints that establish a session.</summary>
 [Route("api/v1/auth")]
 [Tags("Auth")]

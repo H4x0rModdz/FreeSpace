@@ -16,30 +16,6 @@ using Npgsql;
 
 namespace FreeSpace.Api.Files;
 
-public sealed record CreateFolderRequest(Guid? ParentId, [Required, StringLength(NodeName.MaxLength, MinimumLength = 1)] string Name);
-public sealed record RenameNodeRequest([Required, StringLength(NodeName.MaxLength, MinimumLength = 1)] string Name);
-/// <param name="ParentId">Destination folder; null moves to the root.</param>
-public sealed record MoveNodeRequest(Guid? ParentId);
-
-public sealed record NodeResponse(
-    Guid Id, Guid? ParentId, NodeKind Kind, string Name, long SizeBytes, string? MimeType, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
-{
-    public static NodeResponse From(Node n) => new(n.Id, n.ParentId, n.Kind, n.Name, n.SizeBytes, n.MimeType, n.CreatedAt, n.UpdatedAt);
-}
-
-public sealed record ZipRequest([Required, MinLength(1), MaxLength(1000)] Guid[] NodeIds, [StringLength(NodeName.MaxLength)] string? Name);
-
-/// <param name="Url">
-/// When <paramref name="Direct"/> is true, an absolute URL at the storage provider (S3 presigned GET).
-/// Otherwise a path on this API (<c>/api/v1/content/{token}</c>) that needs no Authorization header.
-/// </param>
-public sealed record ContentLinkResponse(string Url, bool Direct, DateTimeOffset ExpiresAt);
-
-public sealed record PathSegmentResponse(Guid Id, string Name);
-public sealed record NodeDetailsResponse(NodeResponse Node, IReadOnlyList<PathSegmentResponse> Path);
-/// <param name="NextCursor">Pass as <c>cursor</c> to get the next page; null on the last page.</param>
-public sealed record NodePageResponse(IReadOnlyList<NodeResponse> Items, string? NextCursor);
-
 /// <summary>
 /// The tenant's virtual tree: folders exist only here, files point to stored objects. Listing is
 /// folders first, then by name, with keyset pagination. Viewers read; members and up change things.
@@ -77,7 +53,7 @@ public sealed class NodesController(AppDbContext db, FileTree tree, AuditLog aud
         var hasMore = page.Count > take;
         if (hasMore) page.RemoveAt(page.Count - 1);
         var next = hasMore ? new ListCursor(page[^1].IsFolder, page[^1].NormalizedName).Encode() : null;
-        return Ok(new NodePageResponse(page.Select(NodeResponse.From).ToList(), next));
+        return Ok(new NodePageResponse(page.Select(ResponseMappings.ToNodeResponse).ToList(), next));
     }
 
     /// <summary>A node plus its path from the root (breadcrumbs).</summary>
@@ -89,7 +65,7 @@ public sealed class NodesController(AppDbContext db, FileTree tree, AuditLog aud
         if (node is null) return NodeNotFound();
 
         var path = await tree.PathAsync(TenantId, id, ct);
-        return Ok(new NodeDetailsResponse(NodeResponse.From(node), path.Select(p => new PathSegmentResponse(p.Id, p.Name)).ToList()));
+        return Ok(new NodeDetailsResponse(ResponseMappings.ToNodeResponse(node), path.Select(p => new PathSegmentResponse(p.Id, p.Name)).ToList()));
     }
 
     /// <summary>Case-insensitive substring search over names in the whole tree (excluding trash).</summary>
@@ -105,7 +81,7 @@ public sealed class NodesController(AppDbContext db, FileTree tree, AuditLog aud
             .OrderByDescending(n => n.UpdatedAt)
             .Take(Math.Clamp(limit ?? 50, 1, 200))
             .ToListAsync(ct);
-        return Ok(results.Select(NodeResponse.From));
+        return Ok(results.Select(ResponseMappings.ToNodeResponse));
     }
 
     /// <summary>
@@ -177,7 +153,7 @@ public sealed class NodesController(AppDbContext db, FileTree tree, AuditLog aud
         var folder = Node.Folder(TenantId, request.ParentId, request.Name, UserId, clock.GetUtcNow());
         db.Nodes.Add(folder);
         audit.Record(TenantId, UserId, AuditActions.FolderCreated, "node", folder.Id, new { folder.Name, folder.ParentId });
-        return await SaveOrConflictAsync(() => Created($"/api/v1/nodes/{folder.Id}", NodeResponse.From(folder)), ct);
+        return await SaveOrConflictAsync(() => Created($"/api/v1/nodes/{folder.Id}", ResponseMappings.ToNodeResponse(folder)), ct);
     }
 
     [HttpPatch("{id:guid}"), MinimumRole(TenantRole.Member)]
@@ -192,7 +168,7 @@ public sealed class NodesController(AppDbContext db, FileTree tree, AuditLog aud
         var previous = node.Name;
         node.Rename(request.Name, clock.GetUtcNow());
         audit.Record(TenantId, UserId, AuditActions.NodeRenamed, "node", node.Id, new { previous, current = node.Name });
-        return await SaveOrConflictAsync(() => Ok(NodeResponse.From(node)), ct);
+        return await SaveOrConflictAsync(() => Ok(ResponseMappings.ToNodeResponse(node)), ct);
     }
 
     /// <summary>Moves a file or folder (with everything inside) into another folder, or to the root.</summary>
@@ -205,7 +181,7 @@ public sealed class NodesController(AppDbContext db, FileTree tree, AuditLog aud
 
         var node = await db.Nodes.FirstOrDefaultAsync(n => n.Id == id && n.TrashedAt == null, ct);
         if (node is null) return NodeNotFound();
-        if (node.ParentId == request.ParentId) return Ok(NodeResponse.From(node));
+        if (node.ParentId == request.ParentId) return Ok(ResponseMappings.ToNodeResponse(node));
 
         if (request.ParentId is { } parentId)
         {
@@ -218,7 +194,7 @@ public sealed class NodesController(AppDbContext db, FileTree tree, AuditLog aud
         var previousParent = node.ParentId;
         node.MoveTo(request.ParentId, clock.GetUtcNow());
         audit.Record(TenantId, UserId, AuditActions.NodeMoved, "node", node.Id, new { from = previousParent, to = request.ParentId });
-        var result = await SaveOrConflictAsync(() => Ok(NodeResponse.From(node)), ct);
+        var result = await SaveOrConflictAsync(() => Ok(ResponseMappings.ToNodeResponse(node)), ct);
         await transaction.CommitAsync(ct);
         return result;
     }

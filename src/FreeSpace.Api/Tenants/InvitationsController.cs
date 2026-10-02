@@ -13,19 +13,6 @@ using Microsoft.Extensions.Options;
 
 namespace FreeSpace.Api.Tenants;
 
-public sealed record CreateInvitationRequest(
-    [Required, EmailAddress, StringLength(320)] string Email,
-    [Required] TenantRole Role);
-
-public sealed record AcceptInvitationRequest([Required, StringLength(256)] string Token);
-
-public sealed record InvitationResponse(Guid Id, string Email, TenantRole Role, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt);
-
-/// <summary>Returned once at creation; the raw token is never stored or shown again.</summary>
-public sealed record CreatedInvitationResponse(Guid Id, string Email, TenantRole Role, DateTimeOffset ExpiresAt, string Token);
-
-public sealed record AcceptedInvitationResponse(Guid TenantId, TenantRole Role);
-
 [Route("api/v1/tenants/current/invitations")]
 [Tags("Invitations")]
 [MinimumRole(TenantRole.Admin)]

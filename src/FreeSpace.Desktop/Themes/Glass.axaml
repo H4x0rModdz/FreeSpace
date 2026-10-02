@@ -1,0 +1,375 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    FreeSpace look: frosted glass over an iridescent backdrop, with Y2K gel (glossy, bubble-like)
+    controls. Glass = translucent white fill + a rim of light on the top-left edge + a violet-tinted
+    shadow. Gel = saturated gradient + a bright highlight on the upper half.
+  -->
+
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+
+          <!-- Palette -->
+          <Color x:Key="Ink">#1E1B4B</Color>
+          <Color x:Key="InkSoft">#5B5788</Color>
+          <Color x:Key="SkyGel">#BFE9FF</Color>
+          <Color x:Key="LilacMist">#DCCBFF</Color>
+          <Color x:Key="Bubblegum">#FFC8E8</Color>
+          <Color x:Key="AquaGel">#18B4FF</Color>
+          <Color x:Key="AquaDeep">#0A7BE0</Color>
+          <Color x:Key="LimePop">#B9F23A</Color>
+          <Color x:Key="Danger">#E0245E</Color>
+
+          <SolidColorBrush x:Key="InkBrush" Color="{StaticResource Ink}" />
+          <SolidColorBrush x:Key="InkSoftBrush" Color="{StaticResource InkSoft}" />
+          <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource Danger}" />
+
+          <LinearGradientBrush x:Key="BackdropBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+            <GradientStop Offset="0" Color="#C4EBFF" />
+            <GradientStop Offset="0.5" Color="#E0D2FF" />
+            <GradientStop Offset="1" Color="#FFD2EC" />
+          </LinearGradientBrush>
+
+          <!-- Glass surfaces -->
+          <LinearGradientBrush x:Key="GlassFill" StartPoint="0%,0%" EndPoint="100%,100%">
+            <GradientStop Offset="0" Color="#B8FFFFFF" />
+            <GradientStop Offset="1" Color="#73FFFFFF" />
+          </LinearGradientBrush>
+          <LinearGradientBrush x:Key="GlassFillLight" StartPoint="0%,0%" EndPoint="100%,100%">
+            <GradientStop Offset="0" Color="#8CFFFFFF" />
+            <GradientStop Offset="1" Color="#4DFFFFFF" />
+          </LinearGradientBrush>
+          <LinearGradientBrush x:Key="GlassRim" StartPoint="0%,0%" EndPoint="100%,100%">
+            <GradientStop Offset="0" Color="#F2FFFFFF" />
+            <GradientStop Offset="0.5" Color="#66FFFFFF" />
+            <GradientStop Offset="1" Color="#B3FFFFFF" />
+          </LinearGradientBrush>
+          <SolidColorBrush x:Key="GlassDivider" Color="#80FFFFFF" />
+          <BoxShadows x:Key="GlassShadow">0 22 48 -8 #405B3FD9, inset 0 1 0 0 #E6FFFFFF</BoxShadows>
+          <BoxShadows x:Key="GlassShadowSoft">0 10 24 -6 #335B3FD9, inset 0 1 0 0 #CCFFFFFF</BoxShadows>
+
+          <!-- Gel (aqua) -->
+          <LinearGradientBrush x:Key="GelAqua" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Offset="0" Color="#5BD2FF" />
+            <GradientStop Offset="0.5" Color="#18B4FF" />
+            <GradientStop Offset="1" Color="#0A8FEA" />
+          </LinearGradientBrush>
+          <LinearGradientBrush x:Key="GelAquaHover" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Offset="0" Color="#7DDDFF" />
+            <GradientStop Offset="0.5" Color="#34C0FF" />
+            <GradientStop Offset="1" Color="#1599F2" />
+          </LinearGradientBrush>
+          <LinearGradientBrush x:Key="GelAquaPressed" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Offset="0" Color="#0A8FEA" />
+            <GradientStop Offset="1" Color="#18B4FF" />
+          </LinearGradientBrush>
+          <LinearGradientBrush x:Key="GelGloss" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Offset="0" Color="#E6FFFFFF" />
+            <GradientStop Offset="1" Color="#14FFFFFF" />
+          </LinearGradientBrush>
+          <LinearGradientBrush x:Key="GelRim" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Offset="0" Color="#B3FFFFFF" />
+            <GradientStop Offset="1" Color="#800A7BE0" />
+          </LinearGradientBrush>
+
+          <!-- Fluent resources reused by built-in controls (so hover/focus states still work) -->
+          <SolidColorBrush x:Key="ButtonForeground" Color="{StaticResource Ink}" />
+          <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="{StaticResource Ink}" />
+          <SolidColorBrush x:Key="ButtonForegroundPressed" Color="{StaticResource Ink}" />
+          <SolidColorBrush x:Key="ButtonForegroundDisabled" Color="#661E1B4B" />
+          <SolidColorBrush x:Key="ButtonBackground" Color="#80FFFFFF" />
+          <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#B3FFFFFF" />
+          <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#66FFFFFF" />
+          <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="#40FFFFFF" />
+          <SolidColorBrush x:Key="ButtonBorderBrush" Color="#CCFFFFFF" />
+          <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#FFFFFFFF" />
+          <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#99FFFFFF" />
+          <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="#66FFFFFF" />
+
+          <SolidColorBrush x:Key="TextControlForeground" Color="{StaticResource Ink}" />
+          <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="{StaticResource Ink}" />
+          <SolidColorBrush x:Key="TextControlForegroundFocused" Color="{StaticResource Ink}" />
+          <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#7C78A8" />
+          <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="#6F6B9E" />
+          <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#C25B5788" />
+          <SolidColorBrush x:Key="TextControlBackground" Color="#80FFFFFF" />
+          <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#99FFFFFF" />
+          <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#D9FFFFFF" />
+          <SolidColorBrush x:Key="TextControlBorderBrush" Color="#B3FFFFFF" />
+          <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#E6FFFFFF" />
+          <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#18B4FF" />
+
+          <SolidColorBrush x:Key="ComboBoxForeground" Color="{StaticResource Ink}" />
+          <SolidColorBrush x:Key="ComboBoxBackground" Color="#80FFFFFF" />
+          <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#B3FFFFFF" />
+          <SolidColorBrush x:Key="ComboBoxBackgroundPressed" Color="#66FFFFFF" />
+          <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#CCFFFFFF" />
+          <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#FFFFFFFF" />
+          <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#F5F4F0FF" />
+
+          <SolidColorBrush x:Key="ListBoxItemForeground" Color="{StaticResource Ink}" />
+          <SolidColorBrush x:Key="ListBoxItemBackgroundPointerOver" Color="#66FFFFFF" />
+          <SolidColorBrush x:Key="ListBoxItemBackgroundSelected" Color="#A6FFFFFF" />
+          <SolidColorBrush x:Key="ListBoxItemBackgroundSelectedPointerOver" Color="#B8FFFFFF" />
+          <SolidColorBrush x:Key="ListBoxItemBackgroundSelectedPressed" Color="#99FFFFFF" />
+          <SolidColorBrush x:Key="ListBoxItemForegroundSelected" Color="{StaticResource Ink}" />
+          <SolidColorBrush x:Key="ListBoxItemForegroundSelectedPointerOver" Color="{StaticResource Ink}" />
+
+          <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#F5F4F0FF" />
+          <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="#B3FFFFFF" />
+          <SolidColorBrush x:Key="MenuFlyoutItemForeground" Color="{StaticResource Ink}" />
+          <SolidColorBrush x:Key="MenuFlyoutItemForegroundPointerOver" Color="{StaticResource Ink}" />
+          <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPointerOver" Color="#80FFFFFF" />
+
+          <SolidColorBrush x:Key="ProgressBarBackground" Color="#59FFFFFF" />
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+
+      <!-- Icons (24x24 box) -->
+      <StreamGeometry x:Key="IconSpark">M12 2l2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2z</StreamGeometry>
+      <StreamGeometry x:Key="IconFolder">M3 7a2 2 0 0 1 2-2h4.2l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z</StreamGeometry>
+      <StreamGeometry x:Key="IconCloud">M7 18a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 17 8.6 4.3 4.3 0 0 1 17.5 18z</StreamGeometry>
+      <StreamGeometry x:Key="IconTrash">M9 4h6l1 2h4v2H4V6h4z M6 9h12l-1 11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1z</StreamGeometry>
+      <StreamGeometry x:Key="IconUp">M12 5l7 8h-4.5v6h-5v-6H5z</StreamGeometry>
+      <StreamGeometry x:Key="IconRefresh">M17.7 6.3A8 8 0 1 0 20 12h-2.2a5.8 5.8 0 1 1-1.7-4.1L13 11h8V3z</StreamGeometry>
+      <StreamGeometry x:Key="IconUpload">M12 4l6 6.5h-4V17h-4v-6.5H6z M6 19h12v2H6z</StreamGeometry>
+      <StreamGeometry x:Key="IconDownload">M10 4h4v6.5h4L12 17l-6-6.5h4z M6 19h12v2H6z</StreamGeometry>
+
+      <!-- Glossy tile behind each file/folder glyph (Aqua-era app icon) -->
+      <DataTemplate x:Key="FileTile" x:CompileBindings="False">
+        <Panel Width="36" Height="36">
+          <Border Background="{Binding Tint}" CornerRadius="11"
+                  BoxShadow="0 4 8 -2 #40000000, inset 0 -4 6 0 #38000000, inset 0 1.5 0 0 #A6FFFFFF" />
+          <Border CornerRadius="10,10,16,16" Margin="3,2,3,0" VerticalAlignment="Top" Height="16" IsHitTestVisible="False">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#B3FFFFFF" />
+                <GradientStop Offset="1" Color="#05FFFFFF" />
+              </LinearGradientBrush>
+            </Border.Background>
+          </Border>
+          <Path Data="{Binding GlyphData}" Fill="White" Width="20" Height="20" Stretch="Uniform"
+                HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Panel>
+      </DataTemplate>
+
+      <FontFamily x:Key="DisplayFont">avares://FreeSpace/Assets/Fonts#Michroma</FontFamily>
+      <FontFamily x:Key="UiFont">avares://FreeSpace/Assets/Fonts#Varela Round</FontFamily>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <!-- Base -->
+  <Style Selector="Window, UserControl">
+    <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+    <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+  </Style>
+  <Style Selector="TextBlock">
+    <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+  </Style>
+
+  <!-- Typography -->
+  <Style Selector="TextBlock.display">
+    <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+    <Setter Property="FontSize" Value="20" />
+    <Setter Property="LetterSpacing" Value="0.5" />
+  </Style>
+  <Style Selector="TextBlock.title">
+    <Setter Property="FontFamily" Value="{StaticResource DisplayFont}" />
+    <Setter Property="FontSize" Value="17" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="TextBlock.name">
+    <Setter Property="FontSize" Value="15" />
+  </Style>
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource InkSoftBrush}" />
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="TextBlock.error">
+    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.warning">
+    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
+  <!-- Glass surfaces -->
+  <Style Selector="Border.glass">
+    <Setter Property="Background" Value="{DynamicResource GlassFill}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource GlassRim}" />
+    <Setter Property="BorderThickness" Value="1.25" />
+    <Setter Property="CornerRadius" Value="30" />
+    <Setter Property="BoxShadow" Value="{DynamicResource GlassShadow}" />
+  </Style>
+  <Style Selector="Border.glassSoft">
+    <Setter Property="Background" Value="{DynamicResource GlassFillLight}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource GlassRim}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="20" />
+    <Setter Property="BoxShadow" Value="{DynamicResource GlassShadowSoft}" />
+  </Style>
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource GlassFill}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource GlassRim}" />
+    <Setter Property="BorderThickness" Value="1.25" />
+    <Setter Property="CornerRadius" Value="30" />
+    <Setter Property="Padding" Value="28" />
+    <Setter Property="BoxShadow" Value="{DynamicResource GlassShadow}" />
+  </Style>
+  <Style Selector="Border.divider">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Background" Value="{DynamicResource GlassDivider}" />
+  </Style>
+
+  <!-- Buttons: glass pills by default -->
+  <Style Selector="Button">
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Padding" Value="16,8" />
+    <Setter Property="BorderThickness" Value="1.25" />
+    <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+  </Style>
+
+  <!-- Gel button: the one loud element -->
+  <Style Selector="Button.gel">
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <Border x:Name="Gel" Background="{DynamicResource GelAqua}" BorderBrush="{DynamicResource GelRim}"
+                  BorderThickness="1.25" CornerRadius="999"
+                  BoxShadow="0 8 16 -4 #660A7BE0, inset 0 -3 6 0 #330A5AA8" />
+          <!-- Gloss: a bright cap over the upper half, like a bubble -->
+          <Grid RowDefinitions="*,*" IsHitTestVisible="False">
+            <Border Background="{DynamicResource GelGloss}" CornerRadius="999,999,999,999" Margin="6,3,6,0" />
+          </Grid>
+          <ContentPresenter x:Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}" Padding="{TemplateBinding Padding}"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                            Foreground="White" TextElement.FontFamily="{StaticResource UiFont}" />
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.gel:pointerover /template/ Border#Gel">
+    <Setter Property="Background" Value="{DynamicResource GelAquaHover}" />
+  </Style>
+  <Style Selector="Button.gel:pressed /template/ Border#Gel">
+    <Setter Property="Background" Value="{DynamicResource GelAquaPressed}" />
+  </Style>
+  <Style Selector="Button.gel:disabled">
+    <Setter Property="Opacity" Value="0.5" />
+  </Style>
+
+  <!-- Quiet text buttons (toggles, breadcrumbs) -->
+  <Style Selector="Button.flat">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource InkSoftBrush}" />
+  </Style>
+  <Style Selector="Button.flat:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#66FFFFFF" />
+    <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+  </Style>
+
+  <!-- Sidebar navigation -->
+  <Style Selector="Button.nav">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="16,11" />
+    <Setter Property="FontSize" Value="15" />
+  </Style>
+  <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#66FFFFFF" />
+  </Style>
+  <Style Selector="Button.nav.active /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#CCFFFFFF" />
+    <Setter Property="BorderBrush" Value="#FFFFFFFF" />
+    <Setter Property="BorderThickness" Value="1.25" />
+    <Setter Property="BoxShadow" Value="0 6 14 -4 #405B3FD9, inset 0 1 0 0 #FFFFFFFF" />
+  </Style>
+
+  <!-- Fields -->
+  <Style Selector="TextBox">
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Padding" Value="16,9" />
+    <Setter Property="BorderThickness" Value="1.25" />
+    <Setter Property="MinHeight" Value="40" />
+  </Style>
+  <Style Selector="ComboBox">
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Padding" Value="16,8" />
+    <Setter Property="BorderThickness" Value="1.25" />
+  </Style>
+
+  <!-- Lists -->
+  <Style Selector="ListBox">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+  </Style>
+  <Style Selector="ListBoxItem">
+    <Setter Property="Padding" Value="14,10" />
+    <Setter Property="CornerRadius" Value="16" />
+    <Setter Property="Margin" Value="0,1" />
+  </Style>
+
+  <!-- Gel progress tube: segmented lime-to-aqua fill in a frosted track -->
+  <Style Selector="ProgressBar">
+    <Setter Property="Height" Value="14" />
+    <Setter Property="MinHeight" Value="14" />
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Background" Value="#59FFFFFF" />
+    <Setter Property="BorderBrush" Value="#B3FFFFFF" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="ProgressBar">
+    <Setter Property="Foreground">
+      <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,0%">
+        <GradientStop Offset="0" Color="#B9F23A" />
+        <GradientStop Offset="1" Color="#18B4FF" />
+      </LinearGradientBrush>
+    </Setter>
+  </Style>
+  <!-- Nearly full: the tube turns bubblegum-to-hot-pink instead of lime-to-aqua -->
+  <Style Selector="ProgressBar.nearFull">
+    <Setter Property="Foreground">
+      <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,0%">
+        <GradientStop Offset="0" Color="#FF9BD6" />
+        <GradientStop Offset="1" Color="#FF3D86" />
+      </LinearGradientBrush>
+    </Setter>
+  </Style>
+  <Style Selector="ProgressBar /template/ Border#PART_Indicator">
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="BoxShadow" Value="inset 0 3 4 0 #A6FFFFFF, inset 0 -2 3 0 #2618B4FF, 0 0 10 0 #4D18B4FF" />
+  </Style>
+  <Style Selector="ProgressBar /template/ Border#PART_Track">
+    <Setter Property="CornerRadius" Value="999" />
+  </Style>
+
+
+  <!-- Scrollbars: thin frosted rails -->
+  <Style Selector="ScrollBar">
+    <Setter Property="Opacity" Value="0.8" />
+  </Style>
+
+  <!-- Tooltips and menus -->
+  <Style Selector="ContextMenu">
+    <Setter Property="CornerRadius" Value="16" />
+    <Setter Property="Padding" Value="6" />
+  </Style>
+  <Style Selector="MenuItem">
+    <Setter Property="CornerRadius" Value="10" />
+  </Style>
+
+  <!-- Dialog windows -->
+  <Style Selector="Window.glassDialog">
+    <Setter Property="Background" Value="{DynamicResource BackdropBrush}" />
+  </Style>
+</Styles>

@@ -7,9 +7,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FreeSpace.Api.Auditing;
 
-public sealed record AuditEventResponse(
-    Guid Id, Guid? ActorUserId, string Action, string? TargetType, Guid? TargetId, JsonElement? Data, string? IpAddress, DateTimeOffset CreatedAt);
-
 [Route("api/v1/tenants/current/audit-events")]
 [Tags("Audit")]
 [MinimumRole(TenantRole.Admin)]

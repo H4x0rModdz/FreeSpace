@@ -28,6 +28,21 @@ virtual, multi-tenant space.
 - `Program.cs` only composes; each concern registers itself from `Configurations/`
   (options, persistence, security, rate limiting, forwarded headers, services, API pipeline).
 
+## Clients
+
+- `FreeSpace.Contracts` holds every request/response record, so the API and its clients share one
+  definition of the wire format.
+- **Desktop app** (Avalonia UI): `FreeSpace.Desktop.Core` has no UI dependency (API client, transfer
+  engines, MVVM view models) and is tested against the real API; `FreeSpace.Desktop` only adds views
+  and platform services (DPAPI session store, dialogs, pickers, clipboard, drag and drop).
+- The API client serializes token refreshes: the server rotates refresh tokens and treats a replayed
+  one as theft, so concurrent 401s must share a single refresh.
+- Uploads take the direct route whenever possible (Drive session URL with resume-from-received,
+  S3 presigned parts in parallel), falling back to streaming through the API; failures abort the
+  session so reservations are released. Downloads write to `.part` files and resume with `Range`.
+- Google Drive is connected through the system browser; the API redirects back to a loopback
+  listener on `127.0.0.1` (RFC 8252).
+
 ## Multi-tenancy
 
 - `Tenant` = a workspace. All content (storage accounts, files, shares, API keys, audit log)
@@ -159,6 +174,8 @@ cannot overcommit an account or lose updates.
 5. **Downloads** ✅ — ranged streaming, safe inline previews, signed content links (S3 presigned
    when possible), streamed zip, public shares for files and folders.
 6. **API keys** with per-tenant scopes.
-7. **Desktop app** — Avalonia UI client: login, storages, browsing, uploads/downloads, later a
-   virtual drive (Windows Cloud Files API).
+7. **Desktop app** 🚧 — first version done: login, workspaces, storages (quota, Google via loopback,
+   S3), browsing, search, folder operations, drag-and-drop direct uploads, resumable downloads,
+   trash, public links. Next: folder uploads/downloads, in-app previews, then a virtual drive
+   (Windows Cloud Files API).
 8. **Extras** — WebDAV, optional per-folder replication, hashing/integrity.

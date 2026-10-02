@@ -1,0 +1,81 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FreeSpace.Desktop.Core.ViewModels"
+             xmlns:local="using:FreeSpace.Desktop"
+             xmlns:contracts="using:FreeSpace.Contracts.Tenants"
+             x:Class="FreeSpace.Desktop.Views.ShellView"
+             x:DataType="vm:ShellViewModel">
+  <Grid ColumnDefinitions="248,*" Margin="18" ColumnSpacing="18">
+
+    <!-- Dock: tall glass panel floating on the backdrop -->
+    <Border Classes="glass" Padding="14,18">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Spacing="4">
+          <TextBlock Classes="display" FontSize="18" Text="FreeSpace ✦" Margin="12,2,0,18" />
+          <TextBlock Classes="muted" Text="Workspace" Margin="12,0,0,2" FontSize="12" />
+          <ComboBox ItemsSource="{Binding Workspaces}" SelectedItem="{Binding Workspace}" HorizontalAlignment="Stretch" Margin="0,0,0,16">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="contracts:TenantSummary">
+                <TextBlock Text="{Binding Name}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+
+          <Button Classes="nav" Command="{Binding NavigateCommand}" CommandParameter="{x:Static vm:Section.Files}"
+                  Classes.active="{Binding Section, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:Section.Files}}">
+            <StackPanel Orientation="Horizontal" Spacing="12"><Path Data="{StaticResource IconFolder}" Fill="{Binding $parent[Button].Foreground}" Width="18" Height="18" Stretch="Uniform" /><TextBlock Text="My files" /></StackPanel>
+          </Button>
+          <Button Classes="nav" Command="{Binding NavigateCommand}" CommandParameter="{x:Static vm:Section.Storage}"
+                  Classes.active="{Binding Section, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:Section.Storage}}">
+            <StackPanel Orientation="Horizontal" Spacing="12"><Path Data="{StaticResource IconCloud}" Fill="{Binding $parent[Button].Foreground}" Width="18" Height="18" Stretch="Uniform" /><TextBlock Text="Storage" /></StackPanel>
+          </Button>
+          <Button Classes="nav" Command="{Binding NavigateCommand}" CommandParameter="{x:Static vm:Section.Trash}"
+                  Classes.active="{Binding Section, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:Section.Trash}}">
+            <StackPanel Orientation="Horizontal" Spacing="12"><Path Data="{StaticResource IconTrash}" Fill="{Binding $parent[Button].Foreground}" Width="18" Height="18" Stretch="Uniform" /><TextBlock Text="Trash" /></StackPanel>
+          </Button>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Spacing="2" VerticalAlignment="Bottom">
+          <Border Classes="divider" Margin="8,0,8,12" />
+          <TextBlock Classes="name" Text="{Binding UserName}" Margin="12,0" />
+          <TextBlock Classes="muted" Text="{Binding UserEmail}" FontSize="12" Margin="12,0,12,8" TextTrimming="CharacterEllipsis" />
+          <Button Classes="nav" Content="Sign out" Command="{Binding LogoutCommand}" />
+        </StackPanel>
+        <Panel />
+      </DockPanel>
+    </Border>
+
+    <!-- Sheet + transfers -->
+    <Grid Grid.Column="1" RowDefinitions="*,Auto" RowSpacing="14">
+      <Border Classes="glass" CornerRadius="32" Padding="28,24,28,16">
+        <ContentControl Content="{Binding CurrentPage}" />
+      </Border>
+
+      <Border Grid.Row="1" Classes="glassSoft" IsVisible="{Binding Transfers.HasItems}" MaxHeight="230" Padding="20,14">
+        <DockPanel>
+          <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Button DockPanel.Dock="Right" Classes="flat" Content="Clear finished" Command="{Binding Transfers.ClearFinishedCommand}" Padding="12,4" />
+            <TextBlock Classes="title" FontSize="13" Text="Transfers" VerticalAlignment="Center" />
+          </DockPanel>
+          <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding Transfers.Items}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:TransferItem">
+                  <Grid ColumnDefinitions="26,2*,3*,100" Margin="0,5">
+                    <Path Data="{Binding IsUpload, Converter={x:Static local:TransferIcons.Direction}}" Fill="#0A7BE0" Width="16" Height="16" Stretch="Uniform" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,14,0" />
+                    <StackPanel Grid.Column="2" Spacing="3" VerticalAlignment="Center">
+                      <ProgressBar Value="{Binding Percent}" Maximum="100" />
+                      <TextBlock Classes="muted" Text="{Binding Detail}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <Button Grid.Column="3" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsActive}" Margin="14,0,0,0" Padding="12,4" HorizontalAlignment="Right" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

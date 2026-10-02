@@ -9,9 +9,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FreeSpace.Api.Files;
 
-/// <param name="ItemCount">How many nodes were trashed together with this one (including itself).</param>
-public sealed record TrashItemResponse(NodeResponse Node, DateTimeOffset TrashedAt, Guid? TrashedByUserId, int ItemCount);
-
 /// <summary>
 /// Trash entries are the nodes a user trashed directly; their contents travel with them.
 /// Permanent deletion queues the bytes for removal at the providers.
@@ -31,7 +28,7 @@ public sealed class TrashController(AppDbContext db, FileTree tree, AuditLog aud
             .Select(g => new { RootId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.RootId, x => x.Count, ct);
 
-        return Ok(roots.Select(r => new TrashItemResponse(NodeResponse.From(r), r.TrashedAt!.Value, r.TrashedByUserId, counts.GetValueOrDefault(r.Id, 1))));
+        return Ok(roots.Select(r => new TrashItemResponse(ResponseMappings.ToNodeResponse(r), r.TrashedAt!.Value, r.TrashedByUserId, counts.GetValueOrDefault(r.Id, 1))));
     }
 
     /// <summary>
@@ -66,7 +63,7 @@ public sealed class TrashController(AppDbContext db, FileTree tree, AuditLog aud
         audit.Record(TenantId, UserId, AuditActions.NodeRestored, "node", root.Id, new { root.Name, parentId = destination });
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
-        return Ok(NodeResponse.From(root));
+        return Ok(ResponseMappings.ToNodeResponse(root));
     }
 
     /// <summary>Deletes an entry forever. Its files' bytes are removed from the providers in the background.</summary>
@@ -88,7 +85,7 @@ public sealed class TrashController(AppDbContext db, FileTree tree, AuditLog aud
     /// <summary>Deletes every trash entry of the tenant forever.</summary>
     [HttpDelete, MinimumRole(TenantRole.Admin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Empty(CancellationToken ct)
+    public async Task<IActionResult> EmptyTrash(CancellationToken ct)
     {
         var rootIds = await db.Nodes.Where(n => n.TrashRootId == n.Id).Select(n => n.Id).ToArrayAsync(ct);
         if (rootIds.Length == 0) return NoContent();

@@ -4,6 +4,7 @@ WORKDIR /src
 # Restore first so the layer is cached while only sources change.
 COPY FreeSpace.slnx ./
 COPY src/FreeSpace.Domain/FreeSpace.Domain.csproj src/FreeSpace.Domain/
+COPY src/FreeSpace.Contracts/FreeSpace.Contracts.csproj src/FreeSpace.Contracts/
 COPY src/FreeSpace.Infrastructure/FreeSpace.Infrastructure.csproj src/FreeSpace.Infrastructure/
 COPY src/FreeSpace.Api/FreeSpace.Api.csproj src/FreeSpace.Api/
 RUN dotnet restore src/FreeSpace.Api/FreeSpace.Api.csproj

@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FreeSpace.Desktop.Core.ViewModels"
+             x:Class="FreeSpace.Desktop.Views.TrashView"
+             x:DataType="vm:TrashViewModel">
+  <DockPanel>
+    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,18">
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10">
+        <Button Content="Empty trash" Command="{Binding EmptyCommand}" />
+        <Button Command="{Binding RefreshCommand}" ToolTip.Tip="Refresh" Padding="10"><Path Data="{StaticResource IconRefresh}" Fill="{Binding $parent[Button].Foreground}" Width="16" Height="16" Stretch="Uniform" /></Button>
+      </StackPanel>
+      <TextBlock Classes="title" FontSize="20" Text="Trash" VerticalAlignment="Center" />
+    </DockPanel>
+
+    <Panel>
+      <ScrollViewer>
+        <ItemsControl ItemsSource="{Binding Items}" x:Name="TrashList">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:TrashItem">
+              <StackPanel>
+                <Grid ColumnDefinitions="52,*,Auto" Margin="2,10">
+                  <ContentControl Content="{Binding}" ContentTemplate="{StaticResource FileTile}" VerticalAlignment="Center" />
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Classes="name" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Classes="muted" Text="{Binding Detail}" FontSize="12" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Restore" Command="{Binding #TrashList.((vm:TrashViewModel)DataContext).RestoreCommand}" CommandParameter="{Binding}" />
+                    <Button Content="Delete forever" Command="{Binding #TrashList.((vm:TrashViewModel)DataContext).DeleteForeverCommand}" CommandParameter="{Binding}" />
+                  </StackPanel>
+                </Grid>
+                <Border Classes="divider" />
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+      <TextBlock Text="{Binding Status}" Classes="muted" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="15"
+                 IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}" />
+    </Panel>
+  </DockPanel>
+</UserControl>

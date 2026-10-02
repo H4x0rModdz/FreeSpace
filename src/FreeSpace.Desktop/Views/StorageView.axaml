@@ -1,0 +1,48 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FreeSpace.Desktop.Core.ViewModels"
+             x:Class="FreeSpace.Desktop.Views.StorageView"
+             x:DataType="vm:StorageViewModel">
+  <DockPanel>
+    <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,20">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10">
+          <Button Content="Connect Google Drive" Command="{Binding ConnectGoogleCommand}" Classes="gel" Padding="22,9" />
+          <Button Content="Connect S3 bucket" Command="{Binding ConnectS3Command}" />
+          <Button Command="{Binding RefreshCommand}" ToolTip.Tip="Refresh" Padding="10"><Path Data="{StaticResource IconRefresh}" Fill="{Binding $parent[Button].Foreground}" Width="16" Height="16" Stretch="Uniform" /></Button>
+        </StackPanel>
+        <TextBlock Classes="title" FontSize="20" Text="Storage" VerticalAlignment="Center" />
+      </DockPanel>
+      <TextBlock Classes="muted" Text="{Binding Summary}" TextWrapping="Wrap" />
+      <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
+    </StackPanel>
+
+    <ScrollViewer>
+      <ItemsControl ItemsSource="{Binding Accounts}" x:Name="AccountList">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:StorageAccountItem">
+            <!-- Rows, not cards: a glass divider separates accounts so the sheet stays one surface -->
+            <StackPanel Margin="0,0,0,4">
+              <Grid ColumnDefinitions="*,Auto" Margin="2,14,2,16">
+                <StackPanel Spacing="3">
+                  <TextBlock Classes="name" FontSize="17" Text="{Binding Name}" />
+                  <TextBlock Classes="muted" Text="{Binding Detail}" />
+                  <ProgressBar Value="{Binding UsedPercent}" Maximum="100" Margin="0,12,0,4" Classes.nearFull="{Binding NearFull}" />
+                  <StackPanel Orientation="Horizontal" Spacing="14">
+                    <TextBlock Text="{Binding Usage}" />
+                    <TextBlock Text="{Binding StatusText}" Classes.warning="{Binding NeedsAttention}" Classes.muted="{Binding !NeedsAttention}" />
+                  </StackPanel>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="24,0,0,0">
+                  <Button Content="Sync" Command="{Binding #AccountList.((vm:StorageViewModel)DataContext).SyncCommand}" CommandParameter="{Binding}" />
+                  <Button Content="Remove" Command="{Binding #AccountList.((vm:StorageViewModel)DataContext).RemoveCommand}" CommandParameter="{Binding}" />
+                </StackPanel>
+              </Grid>
+              <Border Classes="divider" />
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

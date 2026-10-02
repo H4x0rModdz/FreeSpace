@@ -1,0 +1,30 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FreeSpace.Desktop.Core.ViewModels"
+        x:Class="FreeSpace.Desktop.Views.MainWindow"
+        x:DataType="vm:AppViewModel"
+        Title="FreeSpace"
+        Width="1240" Height="800" MinWidth="880" MinHeight="560"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BackdropBrush}">
+
+  <Panel>
+    <!-- Backdrop: soft iridescent orbs. Static, so the glass above them always has something to refract. -->
+    <Canvas IsHitTestVisible="False" ClipToBounds="True">
+      <Ellipse Width="520" Height="520" Canvas.Left="-140" Canvas.Top="-160" Fill="#7FD6FF" Opacity="0.75" Effect="blur(90)" />
+      <Ellipse Width="460" Height="460" Canvas.Left="760" Canvas.Top="-120" Fill="#C3A8FF" Opacity="0.7" Effect="blur(90)" />
+      <Ellipse Width="560" Height="560" Canvas.Left="680" Canvas.Top="420" Fill="#FF9BD6" Opacity="0.65" Effect="blur(100)" />
+      <Ellipse Width="300" Height="300" Canvas.Left="120" Canvas.Top="560" Fill="#D7FF7A" Opacity="0.55" Effect="blur(80)" />
+    </Canvas>
+
+    <!-- A few sparkles: the one Y2K flourish on the backdrop, anchored to the window edges -->
+    <Panel IsHitTestVisible="False">
+      <Path Data="{StaticResource IconSpark}" Fill="White" Width="18" Height="18" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="267,96,0,0" Opacity="0.95" Effect="drop-shadow(0 0 10 #FFFFFF)" />
+      <Path Data="{StaticResource IconSpark}" Fill="White" Width="14" Height="14" Stretch="Uniform" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,38,2,0" Opacity="0.85" Effect="drop-shadow(0 0 8 #FFFFFF)" />
+      <Path Data="{StaticResource IconSpark}" Fill="White" Width="20" Height="20" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="270,0,0,10" Opacity="0.9" Effect="drop-shadow(0 0 9 #FFFFFF)" />
+      <Path Data="{StaticResource IconSpark}" Fill="White" Width="11" Height="11" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6,300,0,0" Opacity="0.8" Effect="drop-shadow(0 0 7 #FFFFFF)" />
+    </Panel>
+
+    <ContentControl Content="{Binding Current}" />
+  </Panel>
+</Window>

@@ -36,12 +36,12 @@ public static class StorageTestHelpers
     }
 
     /// <summary>Uploads a file through the API (start → chunks via proxy → complete).</summary>
-    public static async Task<FreeSpace.Api.Files.NodeResponse> UploadFileAsync(this HttpClient client, string name, byte[] content,
+    public static async Task<NodeResponse> UploadFileAsync(this HttpClient client, string name, byte[] content,
         Guid? parentId = null, string mimeType = "application/octet-stream")
     {
         var start = await client.PostJsonAsync("/api/v1/uploads", new { fileName = name, sizeBytes = content.LongLength, mimeType, parentId });
         await start.EnsureStatusAsync(HttpStatusCode.Created);
-        var upload = await start.ReadAsync<FreeSpace.Api.Files.UploadResponse>();
+        var upload = await start.ReadAsync<UploadResponse>();
         for (var index = 0; index < upload.ChunkCount; index++)
         {
             var offset = (int)(index * upload.ChunkSize);
@@ -51,7 +51,7 @@ public static class StorageTestHelpers
         }
         var complete = await client.PostAsync($"/api/v1/uploads/{upload.Id}/complete", null);
         await complete.EnsureStatusAsync(HttpStatusCode.Created);
-        return await complete.ReadAsync<FreeSpace.Api.Files.NodeResponse>();
+        return await complete.ReadAsync<NodeResponse>();
     }
 
     /// <summary>Reads an account row directly (to see counters the API does not expose, like reservations).</summary>

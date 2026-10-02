@@ -12,11 +12,6 @@ namespace FreeSpace.Api.Auth;
 
 public sealed record AccessToken(string Token, DateTimeOffset ExpiresAt);
 
-public sealed record TokenPair(string AccessToken, DateTimeOffset AccessTokenExpiresAt, string RefreshToken, DateTimeOffset RefreshTokenExpiresAt)
-{
-    public string TokenType => "Bearer";
-}
-
 public sealed class TokenService(IOptions<JwtOptions> options, TimeProvider clock)
 {
     private static readonly JsonWebTokenHandler Handler = new();

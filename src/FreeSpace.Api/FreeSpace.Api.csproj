@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\FreeSpace.Infrastructure\FreeSpace.Infrastructure.csproj" />
     <ProjectReference Include="..\FreeSpace.Domain\FreeSpace.Domain.csproj" />
+    <ProjectReference Include="..\FreeSpace.Contracts\FreeSpace.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

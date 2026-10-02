@@ -10,9 +10,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FreeSpace.Api.Files;
 
-public sealed record PublicShareResponse(string Name, NodeKind Kind, long SizeBytes, string? MimeType, DateTimeOffset? ExpiresAt);
-public sealed record PublicNodeResponse(Guid Id, NodeKind Kind, string Name, long SizeBytes, string? MimeType, DateTimeOffset UpdatedAt);
-
 /// <summary>
 /// What anyone holding a share token can see: the shared file, or the shared folder and everything
 /// below it. No session; the token is the only credential, and the item must not be in the trash.

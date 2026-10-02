@@ -12,7 +12,7 @@ choose. For you it is still just `/Photos/trip.jpg`, without needing to know whi
 > **Status:** under active development. Done: authentication, multi-tenancy, invitations,
 > auditing, connecting storage accounts (Google Drive and S3) with quota tracking, the virtual
 > file tree (folders, move/rename, trash, search), resumable uploads, and downloads (ranged
-> streaming, previews, zip, public links). A desktop app (Avalonia UI) is the planned main client. See the [roadmap](docs/ARCHITECTURE.md#phases).
+> streaming, previews, zip, public links), plus a first version of the desktop app (Avalonia UI). See the [roadmap](docs/ARCHITECTURE.md#phases).
 
 ## Why it exists
 
@@ -51,6 +51,30 @@ FreeSpace solves this as a **self-hosted storage gateway**:
 
 Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## Desktop app
+
+The main client is a cross-platform desktop app (Avalonia UI) in `src/FreeSpace.Desktop`:
+
+- sign in or create an account against your server; the session survives restarts (the refresh
+  token is encrypted with Windows DPAPI, or kept in a user-only file elsewhere);
+- switch workspaces, browse folders with breadcrumbs, search, create, rename, trash;
+- **drag files onto the window to upload them**. Bytes go straight from your machine to Google Drive
+  or the S3 bucket, with retries and resume, so the server's bandwidth is not involved;
+- download files (resumable) or double-click to download and open; copy a public link;
+- see every storage account with its quota, connect Google Drive (through your browser) or an S3
+  bucket, sync and remove;
+- restore or permanently delete from the trash.
+
+```bash
+dotnet run --project src/FreeSpace.Desktop
+```
+
+The look is frosted glass over an iridescent backdrop with Y2K gel controls (glossy pill buttons,
+tube-shaped progress bars, Aqua-style file tiles), set in Michroma and Varela Round. Both fonts are
+bundled under the SIL Open Font License (`src/FreeSpace.Desktop/Assets/Fonts`). To review the screens
+without running the app, set `FREESPACE_SNAPSHOT_DIR` and run the `Capture_screens` test in
+`tests/FreeSpace.Desktop.Tests`: it renders each screen with sample data to PNG.
+
 ## Stack
 
 - .NET 10 / ASP.NET Core (controllers) with interactive docs via Scalar
@@ -58,7 +82,9 @@ Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - Short-lived JWT access tokens + refresh tokens with rotation and reuse detection
 - Argon2id password hashing, rate limiting, RFC 9457 errors (ProblemDetails)
 - Docker Compose
-- xUnit + Testcontainers (integration tests against real Postgres and S3)
+- Avalonia UI 12 + CommunityToolkit.Mvvm for the desktop app
+- xUnit v3 (Microsoft Testing Platform) + Testcontainers for integration tests against real
+  Postgres and S3, and Avalonia headless tests for the desktop screens
 
 ## Running with Docker
 
@@ -79,6 +105,7 @@ Requires the .NET 10 SDK and Docker.
 docker compose up -d postgres          # or a local Postgres (user/password: freespace)
 dotnet run --project src/FreeSpace.Api # uses appsettings.Development.json; docs at /scalar
 dotnet test                            # spins up disposable Postgres and S3 containers
+dotnet run --project src/FreeSpace.Desktop  # the desktop app
 ```
 
 New migration:
@@ -91,11 +118,15 @@ dotnet ef migrations add <Name> -p src/FreeSpace.Infrastructure -s src/FreeSpace
 
 ```
 src/FreeSpace.Domain          entities and business rules (no external dependencies)
+src/FreeSpace.Contracts       API request/response types, shared by the API and the clients
 src/FreeSpace.Infrastructure  EF Core/Postgres, migrations, crypto, storage providers
 src/FreeSpace.Api             controllers, authentication, rate limiting, ProblemDetails
   Configurations/             service registration and pipeline, one file per concern
   Common/                     BaseController and SecureController
-tests/FreeSpace.Tests         unit and integration tests
+src/FreeSpace.Desktop.Core    desktop logic without UI: API client, transfer engines, view models
+src/FreeSpace.Desktop         Avalonia desktop app (views, platform services)
+tests/FreeSpace.Tests         unit and integration tests (API, desktop client and transfers)
+tests/FreeSpace.Desktop.Tests headless UI tests for the desktop screens
 docs/                         architecture and roadmap
 ```
 

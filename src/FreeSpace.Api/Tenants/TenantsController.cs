@@ -9,12 +9,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FreeSpace.Api.Tenants;
 
-public sealed record TenantNameRequest([Required, StringLength(200, MinimumLength = 1)] string Name);
-public sealed record ChangeRoleRequest([Required] TenantRole Role);
-
-public sealed record TenantSummary(Guid Id, string Name, TenantRole Role, DateTimeOffset JoinedAt);
-public sealed record MemberResponse(Guid UserId, string Name, string Email, TenantRole Role, DateTimeOffset JoinedAt);
-
 [Route("api/v1/tenants")]
 [Tags("Tenants")]
 public sealed class TenantsController(AppDbContext db, AuditLog audit, TimeProvider clock) : SecureController

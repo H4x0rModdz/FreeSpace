@@ -1,0 +1,80 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FreeSpace.Desktop.Core.ViewModels"
+             x:Class="FreeSpace.Desktop.Views.FilesView"
+             x:DataType="vm:FilesViewModel"
+             DragDrop.AllowDrop="True">
+  <DockPanel>
+    <!-- Toolbar -->
+    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,18">
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10">
+        <TextBox PlaceholderText="Search all files" Width="230" Text="{Binding SearchText}">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
+            <KeyBinding Gesture="Escape" Command="{Binding ClearSearchCommand}" />
+          </TextBox.KeyBindings>
+        </TextBox>
+        <Button Content="New folder" Command="{Binding NewFolderCommand}" />
+        <Button Command="{Binding UploadCommand}" Classes="gel" Padding="22,9"><StackPanel Orientation="Horizontal" Spacing="8"><Path Data="{StaticResource IconUpload}" Fill="White" Width="16" Height="16" Stretch="Uniform" /><TextBlock Text="Upload" Foreground="White" /></StackPanel></Button>
+        <Button Command="{Binding RefreshCommand}" ToolTip.Tip="Refresh" Padding="10"><Path Data="{StaticResource IconRefresh}" Fill="{Binding $parent[Button].Foreground}" Width="16" Height="16" Stretch="Uniform" /></Button>
+      </StackPanel>
+
+      <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+        <Button Command="{Binding UpCommand}" ToolTip.Tip="Up one folder" Padding="10" Margin="0,0,8,0"><Path Data="{StaticResource IconUp}" Fill="{Binding $parent[Button].Foreground}" Width="16" Height="16" Stretch="Uniform" /></Button>
+        <ItemsControl ItemsSource="{Binding Breadcrumbs}" x:Name="Crumbs">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:Breadcrumb">
+              <StackPanel Orientation="Horizontal">
+                <Button Classes="flat" Content="{Binding Name}" Padding="10,5"
+                        Command="{Binding #Crumbs.((vm:FilesViewModel)DataContext).NavigateToCommand}" CommandParameter="{Binding}" />
+                <TextBlock Text="/" VerticalAlignment="Center" Classes="muted" />
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </DockPanel>
+
+    <!-- Column headers -->
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="52,*,110,180" Margin="14,0,14,6">
+      <TextBlock Grid.Column="1" Classes="muted" FontSize="12" Text="Name" />
+      <TextBlock Grid.Column="2" Classes="muted" FontSize="12" Text="Size" />
+      <TextBlock Grid.Column="3" Classes="muted" FontSize="12" Text="Modified" />
+    </Grid>
+    <Border DockPanel.Dock="Top" Classes="divider" Margin="0,0,0,6" />
+
+    <Panel>
+      <ListBox x:Name="List" ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" DoubleTapped="OnDoubleTapped">
+        <ListBox.ContextMenu>
+          <ContextMenu>
+            <MenuItem Header="Open" Command="{Binding OpenCommand}" CommandParameter="{Binding Selected}" />
+            <MenuItem Header="Download…" Command="{Binding DownloadCommand}" />
+            <MenuItem Header="Rename…" Command="{Binding RenameCommand}" />
+            <MenuItem Header="Copy public link" Command="{Binding ShareCommand}" />
+            <Separator />
+            <MenuItem Header="Move to trash" Command="{Binding TrashCommand}" />
+          </ContextMenu>
+        </ListBox.ContextMenu>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:NodeItem">
+            <Grid ColumnDefinitions="52,*,110,180">
+              <ContentControl Content="{Binding}" ContentTemplate="{StaticResource FileTile}" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1" Classes="name" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="2" Classes="muted" Text="{Binding Size}" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="3" Classes="muted" Text="{Binding Modified}" VerticalAlignment="Center" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <TextBlock Text="{Binding Status}" Classes="muted" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="15"
+                 IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}" />
+      <ProgressBar IsIndeterminate="True" VerticalAlignment="Top" IsVisible="{Binding IsLoading}" />
+    </Panel>
+  </DockPanel>
+</UserControl>

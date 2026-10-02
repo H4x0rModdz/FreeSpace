@@ -18,47 +18,6 @@ using Microsoft.Extensions.Options;
 
 namespace FreeSpace.Api.StorageAccounts;
 
-public sealed record ConnectS3Request(
-    [Required, StringLength(200, MinimumLength = 1)] string DisplayName,
-    [StringLength(512)] string? Endpoint,
-    [Required, StringLength(64, MinimumLength = 1)] string Region,
-    [Required, StringLength(63, MinimumLength = 3)] string Bucket,
-    [StringLength(256)] string? Prefix,
-    [Required, StringLength(256, MinimumLength = 1)] string AccessKeyId,
-    [Required, StringLength(512, MinimumLength = 1)] string SecretAccessKey,
-    bool? ForcePathStyle,
-    [Range(1, long.MaxValue)] long? QuotaBytes);
-
-public sealed record UpdateStorageAccountRequest(
-    [StringLength(200, MinimumLength = 1)] string? DisplayName,
-    [Range(0, 1000)] int? Priority,
-    bool? Enabled);
-
-/// <param name="ReturnUrl">
-/// For native apps: where the browser goes after consent, with <c>status</c> and <c>accountId</c> appended.
-/// Must be a loopback URL (http://127.0.0.1:port/...) or a registered custom scheme (freespace://...).
-/// </param>
-public sealed record AuthorizeGoogleRequest([StringLength(2048)] string? ReturnUrl);
-
-public sealed record GoogleAuthorizationResponse(string AuthorizationUrl);
-
-public sealed record RoutingPolicyRequest([Required] UploadRoutingPolicy Policy);
-public sealed record RoutingPolicyResponse(UploadRoutingPolicy Policy);
-
-public sealed record StorageAccountResponse(
-    Guid Id, StorageProvider Provider, string DisplayName, string? Email, StorageAccountStatus Status, int Priority,
-    long? TotalBytes, long UsedBytes, long? AvailableBytes, DateTimeOffset? LastQuotaSyncAt, string? LastError,
-    JsonElement? Config, DateTimeOffset CreatedAt)
-{
-    // ConfigJson never holds secrets (those live encrypted in SecretCiphertext), so it is safe to expose.
-    public static StorageAccountResponse From(StorageAccount a) => new(
-        a.Id, a.Provider, a.DisplayName, a.Email, a.Status, a.Priority, a.TotalBytes, a.UsedBytes, a.AvailableBytes,
-        a.LastQuotaSyncAt, a.LastError, a.ConfigJson is null ? null : JsonDocument.Parse(a.ConfigJson).RootElement, a.CreatedAt);
-}
-
-/// <param name="TotalBytes">Sum of finite quotas; see <paramref name="HasUnlimitedAccount"/>.</param>
-public sealed record StorageSummaryResponse(long TotalBytes, long UsedBytes, long AvailableBytes, bool HasUnlimitedAccount, int ActiveAccounts, int AccountsNeedingAttention);
-
 /// <summary>Storage backends of the active tenant. Everyone sees them; only admins change them.</summary>
 [Route("api/v1/storage-accounts")]
 [Tags("Storage accounts")]
@@ -71,7 +30,7 @@ public sealed class StorageAccountsController(AppDbContext db, AuditLog audit, T
     public async Task<IActionResult> List(CancellationToken ct)
     {
         var accounts = await db.StorageAccounts.OrderBy(a => a.Priority).ThenBy(a => a.CreatedAt).ToListAsync(ct);
-        return Ok(accounts.Select(StorageAccountResponse.From));
+        return Ok(accounts.Select(ResponseMappings.ToAccountResponse));
     }
 
     [HttpGet("summary")]
@@ -92,7 +51,7 @@ public sealed class StorageAccountsController(AppDbContext db, AuditLog audit, T
     [HttpGet("{id:guid}")]
     [ProducesResponseType<StorageAccountResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct) =>
-        await FindAsync(id, ct) is { } account ? Ok(StorageAccountResponse.From(account)) : AccountNotFound();
+        await FindAsync(id, ct) is { } account ? Ok(ResponseMappings.ToAccountResponse(account)) : AccountNotFound();
 
     [HttpPatch("{id:guid}"), MinimumRole(TenantRole.Admin)]
     [ProducesResponseType<StorageAccountResponse>(StatusCodes.Status200OK)]
@@ -107,7 +66,7 @@ public sealed class StorageAccountsController(AppDbContext db, AuditLog audit, T
         if (request.Enabled is { } enabled) account.SetEnabled(enabled, now);
         audit.Record(TenantId, UserId, AuditActions.StorageUpdated, "storage_account", account.Id, request);
         await db.SaveChangesAsync(ct);
-        return Ok(StorageAccountResponse.From(account));
+        return Ok(ResponseMappings.ToAccountResponse(account));
     }
 
     /// <summary>Refreshes quota now (also re-validates the credentials).</summary>
@@ -120,7 +79,7 @@ public sealed class StorageAccountsController(AppDbContext db, AuditLog audit, T
 
         await service.SyncQuotaAsync(account, ct);
         await db.SaveChangesAsync(ct);
-        return Ok(StorageAccountResponse.From(account));
+        return Ok(ResponseMappings.ToAccountResponse(account));
     }
 
     [HttpDelete("{id:guid}"), MinimumRole(TenantRole.Admin)]
@@ -191,7 +150,7 @@ public sealed class StorageAccountsController(AppDbContext db, AuditLog audit, T
             new { provider = StorageProvider.S3, endpoint, bucket = config.Bucket, prefix = config.Prefix });
         await db.SaveChangesAsync(ct);
 
-        var response = StorageAccountResponse.From(account);
+        var response = ResponseMappings.ToAccountResponse(account);
         return created ? Created($"/api/v1/storage-accounts/{account.Id}", response) : Ok(response);
     }
 

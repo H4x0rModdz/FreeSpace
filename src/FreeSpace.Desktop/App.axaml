@@ -1,0 +1,15 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:FreeSpace.Desktop"
+             x:Class="FreeSpace.Desktop.App"
+             RequestedThemeVariant="Light">
+
+  <Application.DataTemplates>
+    <local:ViewLocator />
+  </Application.DataTemplates>
+
+  <Application.Styles>
+    <FluentTheme />
+    <StyleInclude Source="avares://FreeSpace/Themes/Glass.axaml" />
+  </Application.Styles>
+</Application>

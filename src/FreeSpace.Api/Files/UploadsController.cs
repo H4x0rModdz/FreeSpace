@@ -14,27 +14,6 @@ using Microsoft.Extensions.Options;
 
 namespace FreeSpace.Api.Files;
 
-public sealed record StartUploadRequest(
-    Guid? ParentId,
-    [Required, StringLength(NodeName.MaxLength, MinimumLength = 1)] string FileName,
-    [Range(1, long.MaxValue)] long SizeBytes,
-    [StringLength(255)] string? MimeType);
-
-public sealed record PresignChunksRequest([Required, MinLength(1), MaxLength(100)] int[] Chunks);
-
-/// <param name="DirectUploadUrl">
-/// Google Drive only: the client may PUT chunks here itself (in order, with Content-Range). Only returned
-/// when the upload starts; keep it to resume. S3 clients ask for per-chunk URLs instead.
-/// </param>
-public sealed record UploadResponse(
-    Guid Id, UploadSessionStatus Status, Guid? ParentId, string FileName, long SizeBytes, string MimeType,
-    long ChunkSize, int ChunkCount, Guid StorageAccountId, StorageProvider Provider, string? DirectUploadUrl,
-    DateTimeOffset ExpiresAt, Guid? NodeId);
-
-public sealed record UploadProgressResponse(UploadResponse Upload, long BytesReceived, IReadOnlyList<int> CompletedChunks);
-public sealed record ChunkReceivedResponse(long BytesReceived, IReadOnlyList<int> CompletedChunks);
-public sealed record ChunkUrlResponse(int Index, string Url, DateTimeOffset ExpiresAt);
-
 /// <summary>
 /// Chunked, resumable uploads. Start a session (space is reserved on the chosen account), send every
 /// chunk either directly to the provider (Drive session URL / S3 presigned part URLs) or through
@@ -128,7 +107,7 @@ public sealed class UploadsController(
             audit.Record(TenantId, UserId, AuditActions.FileUploaded, "node", node.Id,
                 new { node.Name, node.SizeBytes, storageAccountId = session.StorageAccountId });
             await db.SaveChangesAsync(ct);
-            return Created($"/api/v1/nodes/{node.Id}", NodeResponse.From(node));
+            return Created($"/api/v1/nodes/{node.Id}", ResponseMappings.ToNodeResponse(node));
         });
     }
 

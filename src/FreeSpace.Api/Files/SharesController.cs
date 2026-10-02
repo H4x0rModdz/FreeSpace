@@ -11,16 +11,6 @@ using Microsoft.Extensions.Options;
 
 namespace FreeSpace.Api.Files;
 
-/// <param name="ExpiresAt">Null keeps the link working until revoked.</param>
-public sealed record CreateShareRequest(DateTimeOffset? ExpiresAt);
-
-/// <param name="Token">Shown only now; FreeSpace keeps just its hash.</param>
-/// <param name="Url">Public page in the web app, when <c>App:FrontendUrl</c> is configured.</param>
-public sealed record CreatedShareResponse(Guid Id, Guid NodeId, string Token, string? Url, DateTimeOffset? ExpiresAt);
-
-/// <param name="Reachable">False while the shared item is in the trash (the link answers 404 until it is restored).</param>
-public sealed record ShareResponse(Guid Id, Guid NodeId, string NodeName, NodeKind NodeKind, Guid CreatedByUserId, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt, bool Reachable);
-
 /// <summary>Public links to files and folders of the active workspace.</summary>
 [Route("api/v1")]
 [Tags("Shares")]
