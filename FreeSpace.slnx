@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FreeSpace.Api/FreeSpace.Api.csproj" />
+    <Project Path="src/FreeSpace.Domain/FreeSpace.Domain.csproj" />
+    <Project Path="src/FreeSpace.Infrastructure/FreeSpace.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FreeSpace.Tests/FreeSpace.Tests.csproj" />
+  </Folder>
+</Solution>

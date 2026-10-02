@@ -1,0 +1,32 @@
+# Only src/ and the solution are needed to build the API image.
+
+# Build output
+**/bin/
+**/obj/
+**/out/
+**/publish/
+
+# VCS, IDEs
+.git/
+.gitignore
+.vs/
+.vscode/
+.idea/
+**/*.user
+
+# Secrets — never bake into an image
+.env
+.env.*
+**/secrets.json
+**/*.pfx
+**/*.key
+**/*.pem
+
+# Not needed in the image
+tests/
+docs/
+**/TestResults/
+*.md
+docker-compose*.yml
+Dockerfile
+.dockerignore
