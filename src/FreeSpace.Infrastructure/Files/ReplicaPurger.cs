@@ -10,7 +10,7 @@ namespace FreeSpace.Infrastructure.Files;
 /// Removes replicas queued for deletion from their providers, then drops objects left without
 /// replicas. Works across all tenants (background job), so it bypasses the tenant filter explicitly.
 /// </summary>
-public sealed class ReplicaPurger(AppDbContext db, StorageProviderRegistry providers, TimeProvider clock, ILogger<ReplicaPurger> logger)
+public sealed class ReplicaPurger(AppDbContext db, StorageProviderRegistry providers, StorageAccounting accounting, ILogger<ReplicaPurger> logger)
 {
     /// <summary>After this many failed attempts a replica is left for an admin to investigate.</summary>
     public const int MaxAttempts = 10;
@@ -39,7 +39,7 @@ public sealed class ReplicaPurger(AppDbContext db, StorageProviderRegistry provi
             {
                 await providers.Get(account.Provider).DeleteObjectAsync(account, replica.ProviderObjectId, ct);
                 db.Replicas.Remove(replica);
-                account.AdjustUsage(-sizes.GetValueOrDefault(replica.ObjectId), clock.GetUtcNow());
+                await accounting.AddUsageAsync(account.Id, -sizes.GetValueOrDefault(replica.ObjectId), ct);
                 removed++;
             }
             catch (Exception e) when (e is StorageAuthException or StorageConnectionException)

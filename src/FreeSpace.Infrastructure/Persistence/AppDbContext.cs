@@ -24,6 +24,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
     public DbSet<Node> Nodes => Set<Node>();
     public DbSet<StoredObject> StoredObjects => Set<StoredObject>();
     public DbSet<Replica> Replicas => Set<Replica>();
+    public DbSet<UploadSession> UploadSessions => Set<UploadSession>();
 
     // Referenced by the tenant query filter; EF re-evaluates it per context instance.
     private Guid? CurrentTenantId => tenantContext.TenantId;
@@ -37,6 +38,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
         configurationBuilder.Properties<NodeKind>().HaveConversion<string>().HaveMaxLength(32);
         configurationBuilder.Properties<StoredObjectStatus>().HaveConversion<string>().HaveMaxLength(32);
         configurationBuilder.Properties<ReplicaStatus>().HaveConversion<string>().HaveMaxLength(32);
+        configurationBuilder.Properties<UploadSessionStatus>().HaveConversion<string>().HaveMaxLength(32);
+        configurationBuilder.Properties<UploadRoutingPolicy>().HaveConversion<string>().HaveMaxLength(32);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

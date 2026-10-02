@@ -32,6 +32,8 @@ public sealed class StoredObject : Entity, ITenantOwned
     public string? Sha256 { get; private set; }
     public StoredObjectStatus Status { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
+
+    public void MarkAvailable() => Status = StoredObjectStatus.Available;
 }
 
 public enum ReplicaStatus

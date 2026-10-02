@@ -10,6 +10,30 @@ public sealed class StorageAuthException(string message, Exception? inner = null
 /// <summary>The provider could not be reached or refused the operation for a non-credential reason.</summary>
 public sealed class StorageConnectionException(string message, Exception? inner = null) : Exception(message, inner);
 
+/// <summary>What the provider needs to open an upload for one object.</summary>
+/// <param name="BrowserOrigin">Origin allowed to send chunks directly (Drive binds CORS to the session).</param>
+public sealed record UploadSpec(Guid TenantId, Guid ObjectId, long SizeBytes, string MimeType, string? BrowserOrigin);
+
+/// <summary>An open provider upload: the object key and the provider's handle (session URI, multipart id).</summary>
+public sealed record ProviderUpload(string ObjectKey, string Handle, long SizeBytes, long ChunkSize);
+
+/// <param name="DirectUrl">Where a client may send chunks itself, when the provider has a single upload URL (Drive).</param>
+public sealed record UploadStart(ProviderUpload Upload, string? DirectUrl);
+
+/// <param name="CompletedChunks">Zero-based indexes of chunks the provider already holds.</param>
+public sealed record UploadProgress(long BytesReceived, IReadOnlyList<int> CompletedChunks);
+
+public sealed record PresignedChunk(int Index, string Url, DateTimeOffset ExpiresAt);
+
+/// <param name="ProviderObjectId">Id that addresses the stored bytes from now on (Drive file id, S3 key).</param>
+public sealed record CompletedUpload(string ProviderObjectId, long SizeBytes);
+
+/// <summary>The upload protocol was violated (out-of-order chunk, wrong size, not supported by the provider).</summary>
+public sealed class UploadProtocolException(string code, string message) : Exception(message)
+{
+    public string Code { get; } = code;
+}
+
 /// <param name="UsedBytes">Null when the provider has no usage API; FreeSpace then tracks usage itself.</param>
 public sealed record QuotaSnapshot(long? TotalBytes, long? UsedBytes);
 
@@ -23,6 +47,23 @@ public interface IStorageProvider
 
     /// <summary>Reads quota and, in doing so, proves the credentials still work.</summary>
     Task<QuotaSnapshot> GetQuotaAsync(StorageAccount account, CancellationToken ct);
+
+    /// <summary>Opens an upload session at the provider. Chunks are <see cref="ProviderUpload.ChunkSize"/> bytes (last one shorter).</summary>
+    Task<UploadStart> BeginUploadAsync(StorageAccount account, UploadSpec spec, long chunkSize, CancellationToken ct);
+
+    /// <summary>Streams one chunk through the API to the provider (for clients that cannot reach the provider directly).</summary>
+    Task<UploadProgress> UploadChunkAsync(StorageAccount account, ProviderUpload upload, int index, long offset, long length, Stream content, CancellationToken ct);
+
+    /// <summary>Short-lived URLs a client can PUT chunks to directly. Providers with a single session URL return none.</summary>
+    Task<IReadOnlyList<PresignedChunk>> PresignChunksAsync(StorageAccount account, ProviderUpload upload, IReadOnlyList<int> indexes, CancellationToken ct);
+
+    Task<UploadProgress> GetUploadProgressAsync(StorageAccount account, ProviderUpload upload, CancellationToken ct);
+
+    /// <summary>Finalizes the object; throws <see cref="UploadProtocolException"/> if bytes are missing.</summary>
+    Task<CompletedUpload> CompleteUploadAsync(StorageAccount account, ProviderUpload upload, CancellationToken ct);
+
+    /// <summary>Discards an unfinished upload. Best effort and idempotent.</summary>
+    Task AbortUploadAsync(StorageAccount account, ProviderUpload upload, CancellationToken ct);
 
     /// <summary>Deletes one stored object. Idempotent: an object that is already gone counts as deleted.</summary>
     Task DeleteObjectAsync(StorageAccount account, string providerObjectId, CancellationToken ct);

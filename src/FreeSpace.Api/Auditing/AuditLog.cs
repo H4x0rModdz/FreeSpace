@@ -29,6 +29,8 @@ public static class AuditActions
     public const string NodeRestored = "node.restored";
     public const string NodeDeleted = "node.deleted";
     public const string TrashEmptied = "trash.emptied";
+    public const string FileUploaded = "node.file_uploaded";
+    public const string RoutingPolicyChanged = "storage.routing_policy_changed";
 }
 
 /// <summary>

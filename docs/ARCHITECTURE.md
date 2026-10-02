@@ -68,34 +68,52 @@ StorageAccount (Google Drive / S3, encrypted credentials, quota, status)
 
 ### IStorageProvider
 
-Implemented today:
-
 ```csharp
 interface IStorageProvider
 {
     Task<QuotaSnapshot> GetQuotaAsync(StorageAccount account, CancellationToken ct);
+
+    // Uploads: one fixed chunk size per session, same protocol for every provider.
+    Task<UploadStart> BeginUploadAsync(StorageAccount account, UploadSpec spec, long chunkSize, CancellationToken ct);
+    Task<UploadProgress> UploadChunkAsync(StorageAccount account, ProviderUpload upload, int index, long offset, long length, Stream content, CancellationToken ct);
+    Task<IReadOnlyList<PresignedChunk>> PresignChunksAsync(StorageAccount account, ProviderUpload upload, IReadOnlyList<int> indexes, CancellationToken ct);
+    Task<UploadProgress> GetUploadProgressAsync(StorageAccount account, ProviderUpload upload, CancellationToken ct);
+    Task<CompletedUpload> CompleteUploadAsync(StorageAccount account, ProviderUpload upload, CancellationToken ct);
+    Task AbortUploadAsync(StorageAccount account, ProviderUpload upload, CancellationToken ct);
+
     Task DeleteObjectAsync(StorageAccount account, string providerObjectId, CancellationToken ct);
     Task DisconnectAsync(StorageAccount account, CancellationToken ct);
 }
 ```
 
-Coming with uploads and downloads:
+Coming with downloads: `OpenReadAsync(replica, range)`.
 
-```csharp
-Task<UploadTarget> BeginUploadAsync(...);     // Drive resumable session / S3 multipart
-Task<Stream> OpenReadAsync(replica, range);   // ranged download
-```
+### Uploads
 
-Uploads prefer a **direct data plane**: the browser receives the Drive resumable session URI or
-S3 presigned URLs and sends the bytes straight to the storage; the backend only controls
-(init/commit). Drive downloads go through the proxy (handing out the token would expose the whole
-Drive); S3 uses presigned GETs.
+- A session fixes the destination account, the chunk size (≥ 8 MiB, a multiple of 256 KiB, at
+  most 10,000 chunks) and an expiry. The provider handle (Drive session URI, S3 multipart upload
+  id) is stored encrypted.
+- **Drive:** a resumable session in the app's `FreeSpace` folder; files are named by object id.
+  Chunks must arrive in order. The session URI is itself the credential, so clients may send to it
+  directly; the server opens it with the web app's `Origin` so browsers pass CORS.
+- **S3:** a multipart upload where chunk *n* is part *n+1*. Parts may arrive in any order, through
+  the API (streamed via a presigned URL, never buffered) or straight from the client via presigned
+  URLs. Completion lists the parts server-side, so clients never need to report ETags.
+- Completion re-checks every byte at the provider, then (in one transaction) creates the replica,
+  marks the object available, adds the node and turns the reservation into usage.
+- Expired or cancelled sessions abort at the provider and release their reservation.
+
+Uploads prefer a **direct data plane** where the client can reach the provider; otherwise the API
+streams. Drive downloads will go through the proxy (handing out the token would expose the whole
+Drive); S3 will use presigned GETs.
 
 ### StorageAllocator
 
 Chooses the destination account based on: free space (minus reservations for in-flight uploads),
 account status/health (`NeedsReauth` is excluded), Google's daily upload limit (750 GB/day per
-account), and the tenant policy (`most-available`, `round-robin`, `priority`).
+account), and the tenant policy (`MostAvailable`, `RoundRobin`, `Priority`). Reservations,
+usage and the daily counter change only through single atomic SQL updates, so concurrent uploads
+cannot overcommit an account or lose updates.
 
 ## Security rules
 
@@ -120,8 +138,9 @@ account), and the tenant policy (`most-available`, `round-robin`, `priority`).
 3. **Virtual tree** ✅ — `Node`/`StoredObject`/`Replica`, folders, move/rename (with a cycle guard),
    batch trash with restore, trigram search, keyset pagination, asynchronous replica purge at the
    providers.
-4. **Uploads** — resumable sessions (direct to Drive, S3 presigned multipart), allocator,
-   expiry/cleanup.
+4. **Uploads** ✅ — resumable chunked sessions (direct to Drive / S3 presigned parts, or streamed
+   through the API), allocator with atomic reservations and routing policies, expiry/cleanup,
+   CORS for the web app.
 5. **Downloads** — ranged streaming, previews, streamed zip, public shares.
 6. **API keys** with per-tenant scopes.
 7. **Extras** — WebDAV, optional per-folder replication, hashing/integrity, desktop client.

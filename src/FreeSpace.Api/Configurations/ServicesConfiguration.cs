@@ -16,6 +16,8 @@ internal static class ServicesConfiguration
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<AuditLog>();
 
+        services.AddHttpClient(GoogleApi.UploadHttpClient, client => client.Timeout = TimeSpan.FromMinutes(30))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false }); // 308 = "resume incomplete"
         services.AddSingleton<IGoogleApi, GoogleApi>();
         services.AddSingleton<GoogleDriveStorageProvider>();
         services.AddSingleton<S3StorageProvider>();
@@ -23,12 +25,16 @@ internal static class ServicesConfiguration
         services.AddSingleton<IStorageProvider>(sp => sp.GetRequiredService<S3StorageProvider>());
         services.AddSingleton<StorageProviderRegistry>();
         services.AddScoped<StorageAccountService>();
+        services.AddScoped<StorageAccounting>();
 
         services.AddScoped<FileTree>();
         services.AddScoped<ReplicaPurger>();
+        services.AddScoped<StorageAllocator>();
+        services.AddScoped<UploadService>();
 
         services.AddHostedService<QuotaSyncWorker>();
         services.AddHostedService<ReplicaPurgeWorker>();
+        services.AddHostedService<UploadExpiryWorker>();
         return services;
     }
 }

@@ -1,4 +1,7 @@
+using System.Globalization;
 using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using Google;
 using Google.Apis.Auth;
 using Google.Apis.Auth.OAuth2;
@@ -24,6 +27,9 @@ public sealed class GoogleOptions
 public sealed record GoogleConnection(string Subject, string Email, string? Name, string RefreshToken);
 public sealed record GoogleQuota(long? LimitBytes, long UsageBytes);
 
+/// <param name="FileId">Set once Google has the whole file.</param>
+public sealed record ResumableStatus(long BytesReceived, string? FileId, long? FileSize);
+
 /// <summary>The slice of Google's APIs FreeSpace uses; the seam for faking Google in tests.</summary>
 public interface IGoogleApi
 {
@@ -33,11 +39,28 @@ public interface IGoogleApi
     Task<GoogleQuota> GetQuotaAsync(string refreshToken, CancellationToken ct);
     /// <summary>Deletes a Drive file; succeeds if it no longer exists.</summary>
     Task DeleteFileAsync(string refreshToken, string fileId, CancellationToken ct);
+
+    /// <summary>Id of the "FreeSpace" folder in the user's Drive root, created on first use.</summary>
+    Task<string> EnsureAppFolderAsync(string refreshToken, CancellationToken ct);
+
+    /// <summary>Opens a resumable upload; the returned session URI itself authorizes the chunk requests.</summary>
+    Task<Uri> StartResumableUploadAsync(string refreshToken, string name, string folderId, string mimeType, long size, string? origin, CancellationToken ct);
+
+    Task<ResumableStatus> GetResumableStatusAsync(Uri session, long size, CancellationToken ct);
+
+    Task<ResumableStatus> PutResumableChunkAsync(Uri session, long offset, long length, long size, Stream content, CancellationToken ct);
+
+    Task CancelResumableUploadAsync(Uri session, CancellationToken ct);
     Task RevokeAsync(string refreshToken, CancellationToken ct);
 }
 
-public sealed class GoogleApi(IOptions<GoogleOptions> options) : IGoogleApi
+public sealed class GoogleApi(IOptions<GoogleOptions> options, IHttpClientFactory httpClients) : IGoogleApi
 {
+    /// <summary>Named HttpClient for resumable-upload traffic (long timeout, no redirect following: 308 means "resume").</summary>
+    public const string UploadHttpClient = "google-upload";
+    private const string AppFolderName = "FreeSpace";
+    private const string FolderMimeType = "application/vnd.google-apps.folder";
+
     /// <summary>
     /// <c>drive.file</c> only grants access to files this app created, never the user's whole Drive.
     /// It is also a non-sensitive scope, so the OAuth app needs no Google security review.
@@ -113,6 +136,110 @@ public sealed class GoogleApi(IOptions<GoogleOptions> options) : IGoogleApi
             }
             return true;
         });
+
+    public Task<string> EnsureAppFolderAsync(string refreshToken, CancellationToken ct) =>
+        WithDriveAsync(refreshToken, async drive =>
+        {
+            // drive.file only lists folders this app created, so a user's own "FreeSpace" folder is never picked up.
+            var list = drive.Files.List();
+            list.Q = $"name = '{AppFolderName}' and mimeType = '{FolderMimeType}' and 'root' in parents and trashed = false";
+            list.Fields = "files(id)";
+            list.PageSize = 1;
+            var existing = (await list.ExecuteAsync(ct)).Files?.FirstOrDefault()?.Id;
+            if (existing is not null) return existing;
+
+            var create = drive.Files.Create(new global::Google.Apis.Drive.v3.Data.File { Name = AppFolderName, MimeType = FolderMimeType, Parents = ["root"] });
+            create.Fields = "id";
+            return (await create.ExecuteAsync(ct)).Id;
+        });
+
+    public async Task<Uri> StartResumableUploadAsync(string refreshToken, string name, string folderId, string mimeType, long size, string? origin, CancellationToken ct)
+    {
+        var accessToken = await WithDriveAsync(refreshToken, drive =>
+            ((UserCredential)drive.HttpClientInitializer).GetAccessTokenForRequestAsync(cancellationToken: ct));
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,size")
+        {
+            Content = JsonContent.Create(new { name, parents = new[] { folderId } }),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Add("X-Upload-Content-Type", mimeType);
+        request.Headers.Add("X-Upload-Content-Length", size.ToString(CultureInfo.InvariantCulture));
+        // Google ties CORS for the session URI to the origin that opened it; needed for direct browser uploads.
+        if (!string.IsNullOrEmpty(origin)) request.Headers.Add("Origin", origin);
+
+        using var response = await SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new StorageAuthException("Google rejected the credentials; reconnect the account.");
+        if (!response.IsSuccessStatusCode || response.Headers.Location is null)
+            throw new StorageConnectionException($"Google refused to open the upload ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync(ct)}");
+        return response.Headers.Location;
+    }
+
+    public async Task<ResumableStatus> GetResumableStatusAsync(Uri session, long size, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Put, session) { Content = new ByteArrayContent([]) };
+        request.Content.Headers.ContentRange = ContentRangeHeaderValue.Parse($"bytes */{size}");
+        using var response = await SendAsync(request, ct);
+        return await ReadStatusAsync(response, ct);
+    }
+
+    public async Task<ResumableStatus> PutResumableChunkAsync(Uri session, long offset, long length, long size, Stream content, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Put, session) { Content = new StreamContent(content) };
+        request.Content.Headers.ContentLength = length;
+        request.Content.Headers.ContentRange = new ContentRangeHeaderValue(offset, offset + length - 1, size);
+        using var response = await SendAsync(request, ct);
+        return await ReadStatusAsync(response, ct);
+    }
+
+    public async Task CancelResumableUploadAsync(Uri session, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, session);
+        using var _ = await SendAsync(request, ct); // Google answers 499; anything is fine here
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        try
+        {
+            return await httpClients.CreateClient(UploadHttpClient).SendAsync(request, ct);
+        }
+        catch (HttpRequestException e)
+        {
+            throw new StorageConnectionException($"Could not reach Google: {e.Message}", e);
+        }
+    }
+
+    /// <summary>308 = incomplete (Range says how much arrived); 200/201 = done (body has the file); 404/410 = session gone.</summary>
+    private static async Task<ResumableStatus> ReadStatusAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        switch ((int)response.StatusCode)
+        {
+            case 308:
+                return new ResumableStatus(ReceivedBytes(response), null, null);
+            case 200 or 201:
+                var file = await response.Content.ReadFromJsonAsync<DriveFileRef>(ct)
+                           ?? throw new StorageConnectionException("Google returned an empty upload result.");
+                long? fileSize = long.TryParse(file.Size, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+                return new ResumableStatus(fileSize ?? 0, file.Id, fileSize);
+            case 404 or 410:
+                throw new UploadProtocolException("upload_expired", "The Google upload session expired; start a new upload.");
+            default:
+                throw new StorageConnectionException($"Google upload request failed ({(int)response.StatusCode}): {await response.Content.ReadAsStringAsync(ct)}");
+        }
+    }
+
+    /// <summary>Parses "Range: bytes=0-N"; no header means nothing arrived yet.</summary>
+    private static long ReceivedBytes(HttpResponseMessage response)
+    {
+        if (!response.Headers.TryGetValues("Range", out var values)) return 0;
+        var range = values.FirstOrDefault() ?? "";
+        var dash = range.LastIndexOf('-');
+        return dash > 0 && long.TryParse(range[(dash + 1)..], CultureInfo.InvariantCulture, out var lastByte) ? lastByte + 1 : 0;
+    }
+
+    private sealed record DriveFileRef(string Id, string? Size);
 
     /// <summary>Runs a Drive call with the account's credentials and maps Google failures to storage exceptions.</summary>
     private async Task<T> WithDriveAsync<T>(string refreshToken, Func<DriveService, Task<T>> call)

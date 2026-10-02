@@ -10,8 +10,8 @@ Under the hood, each file goes to an account with available space, following the
 choose. For you it is still just `/Photos/trip.jpg`, without needing to know which account holds it.
 
 > **Status:** under active development. Done: authentication, multi-tenancy, invitations,
-> auditing, connecting storage accounts (Google Drive and S3) with quota tracking, and the virtual
-> file tree (folders, move/rename, trash, search). Uploads and downloads come in the next phases. See the [roadmap](docs/ARCHITECTURE.md#phases).
+> auditing, connecting storage accounts (Google Drive and S3) with quota tracking, the virtual
+> file tree (folders, move/rename, trash, search) and resumable uploads. Downloads come next. See the [roadmap](docs/ARCHITECTURE.md#phases).
 
 ## Why it exists
 
@@ -147,6 +147,13 @@ Errors follow RFC 9457 (`application/problem+json`) and carry a stable `code` fi
 | POST | `/api/v1/trash/{id}/restore` | Member+. Restore an entry and its contents (renamed on clash) |
 | DELETE | `/api/v1/trash/{id}` | Member+. Delete forever; the bytes are purged from the providers in the background |
 | DELETE | `/api/v1/trash` | Admin+. Empty the trash |
+| GET/PUT | `/api/v1/storage-accounts/routing-policy` | How uploads pick an account: `mostAvailable`, `roundRobin`, `priority` (PUT: admin+) |
+| POST | `/api/v1/uploads` | Member+. Start an upload: picks an account, reserves the space, returns chunk size and count |
+| GET | `/api/v1/uploads/{id}` | Session state and which chunks the provider already has (for resuming) |
+| PUT | `/api/v1/uploads/{id}/chunks/{index}` | Send one chunk through the API (raw body, exact chunk length) |
+| POST | `/api/v1/uploads/{id}/chunk-urls` | S3: presigned URLs to send chunks straight to the bucket |
+| POST | `/api/v1/uploads/{id}/complete` | Verify all bytes arrived and publish the file node |
+| DELETE | `/api/v1/uploads/{id}` | Cancel and release the reserved space |
 | GET | `/health/live`, `/health/ready` | Public |
 
 Roles: `viewer < member < admin < owner`. Admins manage and grant only roles below admin,
@@ -159,10 +166,35 @@ enable the Drive API, and register `GOOGLE_REDIRECT_URI` as an authorized redire
 FreeSpace requests only the `drive.file` scope, so it sees **only the files it created itself**,
 never the rest of your Drive. This scope does not require a Google security review.
 
+Native clients (like the desktop app) pass a `returnUrl` to
+`POST /api/v1/storage-accounts/google/authorize`. After consent, the browser is sent there with
+`status` and `accountId` appended. Only loopback addresses (`http://127.0.0.1:{port}/...`, RFC 8252)
+and registered app schemes (`App:NativeRedirectSchemes`, default `freespace://`) are accepted.
+
 **S3-compatible:** provide endpoint, region, bucket and keys. The connection is saved only if
 the keys can write and delete a probe object under the prefix. Endpoints on private networks
 and plain HTTP are blocked by default (SSRF protection); for a MinIO on your LAN, enable
 `S3_ALLOW_PRIVATE_ENDPOINTS` and `S3_ALLOW_INSECURE_ENDPOINTS`.
+
+## Uploading files
+
+1. `POST /api/v1/uploads` with `fileName`, `sizeBytes`, optional `mimeType` and `parentId`. FreeSpace
+   picks an account using the workspace's routing policy and **reserves** the space, so parallel
+   uploads never overfill an account. The response has `chunkSize` and `chunkCount`.
+2. Send every chunk (`chunkSize` bytes; the last one may be shorter), either:
+   - **through the API:** `PUT /api/v1/uploads/{id}/chunks/{index}`, which streams to the provider
+     without storing the file on the server; or
+   - **directly to the provider**, so the bytes skip the server entirely:
+     - Google Drive: `PUT` each chunk, in order, to `directUploadUrl` with a `Content-Range` header.
+       For browsers, set `FRONTEND_URL` so Google allows that origin.
+     - S3: ask `POST /api/v1/uploads/{id}/chunk-urls` for presigned URLs and `PUT` each chunk to its
+       URL, in any order. Browsers need a bucket CORS rule allowing `PUT` from the web app's origin.
+3. `GET /api/v1/uploads/{id}` shows which chunks arrived, to resume after an interruption.
+4. `POST /api/v1/uploads/{id}/complete` verifies the bytes at the provider and creates the file.
+   A name clash in the folder gets a ` (n)` suffix.
+
+Unfinished uploads expire after `Storage:UploadSessionHours` (24 h by default) and release their space.
+Each file lives in one account; the largest file is limited by the free space of a single account.
 
 Credentials are encrypted in the database (AES-256-GCM) with `ENCRYPTION_KEY`, which lives
 outside the database. **Keep a backup of that key**: without it, every account has to be reconnected.

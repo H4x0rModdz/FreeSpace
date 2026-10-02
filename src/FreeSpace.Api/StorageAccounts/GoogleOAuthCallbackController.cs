@@ -36,20 +36,20 @@ public sealed class GoogleOAuthCallbackController(
         var stateHash = SecureTokens.Hash(state);
         var oauthState = await db.OAuthStates.FirstOrDefaultAsync(s => s.StateHash == stateHash, ct);
         if (oauthState is null || !oauthState.IsUsable(now) || oauthState.Provider != StorageProvider.GoogleDrive)
-            return Outcome("invalid_state");
+            return Outcome("invalid_state", returnUrl: oauthState?.ReturnUrl);
 
         oauthState.Consume(now); // single use, even if the rest fails
         await db.SaveChangesAsync(ct);
 
         if (!string.IsNullOrEmpty(error) || string.IsNullOrEmpty(code))
-            return Outcome(error == "access_denied" ? "access_denied" : "authorization_failed");
+            return Outcome(error == "access_denied" ? "access_denied" : "authorization_failed", returnUrl: oauthState.ReturnUrl);
 
         // Re-check the initiator is still allowed to manage storage in that tenant.
         var role = await db.Memberships
             .Where(m => m.TenantId == oauthState.TenantId && m.UserId == oauthState.UserId)
             .Select(m => (TenantRole?)m.Role).FirstOrDefaultAsync(ct);
         if (role is null || role < TenantRole.Admin)
-            return Outcome("forbidden");
+            return Outcome("forbidden", returnUrl: oauthState.ReturnUrl);
 
         GoogleConnection connection;
         try
@@ -59,12 +59,12 @@ public sealed class GoogleOAuthCallbackController(
         catch (StorageAuthException e)
         {
             logger.LogInformation("Google connect rejected: {Reason}", e.Message);
-            return Outcome("consent_incomplete");
+            return Outcome("consent_incomplete", returnUrl: oauthState.ReturnUrl);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
             logger.LogWarning(e, "Google code exchange failed");
-            return Outcome("google_error");
+            return Outcome("google_error", returnUrl: oauthState.ReturnUrl);
         }
 
         // Anonymous request: there is no tenant in context, so scope the lookup explicitly.
@@ -88,20 +88,26 @@ public sealed class GoogleOAuthCallbackController(
             "storage_account", account.Id, new { provider = StorageProvider.GoogleDrive, email = connection.Email });
         await db.SaveChangesAsync(ct);
 
-        return Outcome(status: null, account.Id);
+        return Outcome(status: null, account.Id, oauthState.ReturnUrl);
     }
 
-    /// <summary>Sends the browser back to the frontend; without one configured, answers with JSON.</summary>
-    private IActionResult Outcome(string? status, Guid? accountId = null)
+    /// <summary>
+    /// Sends the browser back to the native app (<paramref name="returnUrl"/>, validated when the flow
+    /// started) or to the web app; with neither, answers with JSON.
+    /// </summary>
+    private IActionResult Outcome(string? status, Guid? accountId = null, string? returnUrl = null)
     {
         var outcome = status ?? "connected";
+        var query = $"status={Uri.EscapeDataString(outcome)}" + (accountId is null ? "" : $"&accountId={accountId}");
+        if (returnUrl is not null)
+            return Redirect(returnUrl + (returnUrl.Contains('?') ? "&" : "?") + query);
+
         var frontendUrl = appOptions.Value.FrontendUrl;
         if (string.IsNullOrEmpty(frontendUrl))
             return status is null
                 ? Ok(new { status = outcome, accountId })
                 : BadRequestError(outcome, "Google Drive connection failed.");
 
-        var query = $"status={Uri.EscapeDataString(outcome)}" + (accountId is null ? "" : $"&accountId={accountId}");
         return Redirect($"{frontendUrl.TrimEnd('/')}/storage/google/callback?{query}");
     }
 }

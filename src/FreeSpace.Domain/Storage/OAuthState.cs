@@ -10,8 +10,9 @@ public sealed class OAuthState : Entity
 {
     private OAuthState() { }
 
-    public OAuthState(StorageProvider provider, string stateHash, Guid tenantId, Guid userId, DateTimeOffset expiresAt, DateTimeOffset now)
+    public OAuthState(StorageProvider provider, string stateHash, Guid tenantId, Guid userId, string? returnUrl, DateTimeOffset expiresAt, DateTimeOffset now)
     {
+        ReturnUrl = returnUrl;
         Provider = provider;
         StateHash = stateHash;
         TenantId = tenantId;
@@ -27,6 +28,8 @@ public sealed class OAuthState : Entity
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset ExpiresAt { get; private set; }
     public DateTimeOffset? ConsumedAt { get; private set; }
+    /// <summary>Where to send the browser when done (desktop app loopback/custom scheme); null = the web app.</summary>
+    public string? ReturnUrl { get; private set; }
 
     public bool IsUsable(DateTimeOffset now) => ConsumedAt is null && ExpiresAt > now;
 

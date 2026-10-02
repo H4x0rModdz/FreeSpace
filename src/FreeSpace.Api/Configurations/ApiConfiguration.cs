@@ -27,6 +27,19 @@ internal static class ApiConfiguration
             });
 
         services.AddOpenApi(options => options.AddDocumentTransformer<BearerSecuritySchemeTransformer>());
+
+        // Only the configured web app may call the API from a browser. Auth uses bearer tokens, not cookies.
+        services.AddCors();
+        services.AddOptions<Microsoft.AspNetCore.Cors.Infrastructure.CorsOptions>()
+            .Configure<Microsoft.Extensions.Options.IOptions<AppOptions>>((cors, app) =>
+            {
+                if (Uri.TryCreate(app.Value.FrontendUrl, UriKind.Absolute, out var frontend))
+                    cors.AddDefaultPolicy(policy => policy
+                        .WithOrigins(frontend.GetLeftPart(UriPartial.Authority))
+                        .AllowAnyHeader()
+                        .AllowAnyMethod()
+                        .SetPreflightMaxAge(TimeSpan.FromHours(1)));
+            });
         return services;
     }
 
@@ -35,6 +48,7 @@ internal static class ApiConfiguration
         app.UseForwardedHeaders();
         app.UseExceptionHandler();
         app.UseStatusCodePages();
+        app.UseCors();
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseRateLimiter();

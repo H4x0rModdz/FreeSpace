@@ -103,6 +103,7 @@ internal sealed class StorageAccountConfiguration : IEntityTypeConfiguration<Sto
         b.Property(x => x.ConfigJson).HasColumnName("config").HasColumnType("jsonb");
         b.Property(x => x.LastError).HasMaxLength(1000);
         b.Ignore(x => x.AvailableBytes);
+        b.Ignore(x => x.FreeBytes);
         b.HasIndex(x => new { x.TenantId, x.Provider, x.ExternalAccountId }).IsUnique();
         b.HasIndex(x => new { x.Status, x.LastQuotaSyncAt });
         b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
@@ -116,6 +117,7 @@ internal sealed class OAuthStateConfiguration : IEntityTypeConfiguration<OAuthSt
     {
         b.ToTable("oauth_states");
         b.Property(x => x.StateHash).HasMaxLength(Lengths.Hash);
+        b.Property(x => x.ReturnUrl).HasMaxLength(2048);
         b.HasIndex(x => x.StateHash).IsUnique();
         b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
@@ -175,5 +177,24 @@ internal sealed class ReplicaConfiguration : IEntityTypeConfiguration<Replica>
         b.HasOne<StoredObject>().WithMany().HasForeignKey(x => x.ObjectId).OnDelete(DeleteBehavior.Cascade);
         // An account with replicas cannot be removed (checked by the API); NO ACTION lets tenant deletion cascade.
         b.HasOne<StorageAccount>().WithMany().HasForeignKey(x => x.StorageAccountId).OnDelete(DeleteBehavior.NoAction);
+    }
+}
+
+internal sealed class UploadSessionConfiguration : IEntityTypeConfiguration<UploadSession>
+{
+    public void Configure(EntityTypeBuilder<UploadSession> b)
+    {
+        b.Property(x => x.FileName).HasMaxLength(NodeName.MaxLength);
+        b.Property(x => x.MimeType).HasMaxLength(255);
+        b.Property(x => x.ObjectKey).HasMaxLength(1024);
+        b.Ignore(x => x.ChunkCount);
+        b.HasIndex(x => new { x.Status, x.ExpiresAt });
+        b.HasIndex(x => x.StorageAccountId);
+        b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne<StorageAccount>().WithMany().HasForeignKey(x => x.StorageAccountId).OnDelete(DeleteBehavior.NoAction);
+        // No FK to the object: aborting deletes the pending object while the session row stays as history.
+        // Row version: two concurrent "complete" calls must not both publish the file.
+        b.Property<uint>("Version").IsRowVersion();
     }
 }

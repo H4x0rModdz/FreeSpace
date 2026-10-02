@@ -41,6 +41,12 @@ public sealed class AppOptions
 {
     /// <summary>Public URL of the web app; OAuth callbacks redirect the browser back here.</summary>
     public string? FrontendUrl { get; set; }
+
+    /// <summary>
+    /// Custom URI schemes registered by native clients (e.g. "freespace" for freespace://...). OAuth flows
+    /// may return to these, or to a loopback address (http://127.0.0.1:port), and nowhere else.
+    /// </summary>
+    public string[] NativeRedirectSchemes { get; set; } = ["freespace"];
 }
 
 public sealed class StorageOptions
@@ -48,5 +54,12 @@ public sealed class StorageOptions
     public bool BackgroundQuotaSync { get; set; } = true;
     /// <summary>Removes bytes of permanently deleted files from the providers.</summary>
     public bool BackgroundPurge { get; set; } = true;
+    /// <summary>Cancels abandoned uploads and releases their reserved space.</summary>
+    public bool BackgroundUploadExpiry { get; set; } = true;
+
+    /// <summary>Largest single file. 5 TiB is the S3 object limit and above Drive's per-file limit.</summary>
+    [Range(1, 5L << 40)] public long MaxUploadBytes { get; set; } = 5L << 40;
+    /// <summary>How long an unfinished upload keeps its reservation (Drive sessions live up to a week).</summary>
+    [Range(1, 168)] public int UploadSessionHours { get; set; } = 24;
     [Range(1, 1440)] public int QuotaSyncMinutes { get; set; } = 15;
 }

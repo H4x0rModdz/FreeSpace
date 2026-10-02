@@ -44,6 +44,25 @@ public sealed class ApiSurfaceTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Cors_allows_only_the_configured_frontend()
+    {
+        var client = factory.WithWebHostBuilder(b => b.UseSetting("App:FrontendUrl", "https://app.example.com/some/path")).CreateClient();
+
+        async Task<string?> AllowedOriginFor(string origin)
+        {
+            using var preflight = new HttpRequestMessage(HttpMethod.Options, "/api/v1/me");
+            preflight.Headers.Add("Origin", origin);
+            preflight.Headers.Add("Access-Control-Request-Method", "GET");
+            preflight.Headers.Add("Access-Control-Request-Headers", "authorization");
+            var response = await client.SendAsync(preflight);
+            return response.Headers.TryGetValues("Access-Control-Allow-Origin", out var values) ? values.Single() : null;
+        }
+
+        Assert.Equal("https://app.example.com", await AllowedOriginFor("https://app.example.com"));
+        Assert.Null(await AllowedOriginFor("https://evil.example.com"));
+    }
+
+    [Fact]
     public async Task Validation_errors_carry_a_code()
     {
         var response = await factory.CreateClient().PostJsonAsync("/api/v1/auth/login", new { email = "" });

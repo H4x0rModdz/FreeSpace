@@ -55,6 +55,11 @@ public sealed class StorageAccount : Entity, ITenantOwned
     /// <summary>Null means the provider reports no limit (or none was configured).</summary>
     public long? TotalBytes { get; private set; }
     public long UsedBytes { get; private set; }
+    /// <summary>Bytes promised to uploads in progress. Changed only through atomic SQL updates (see StorageAccounting).</summary>
+    public long ReservedBytes { get; private set; }
+    /// <summary>UTC day that <see cref="UploadedTodayBytes"/> refers to (Google caps uploads per account per day).</summary>
+    public DateOnly? UploadDay { get; private set; }
+    public long UploadedTodayBytes { get; private set; }
     public DateTimeOffset? LastQuotaSyncAt { get; private set; }
     public string? LastError { get; private set; }
 
@@ -63,6 +68,11 @@ public sealed class StorageAccount : Entity, ITenantOwned
     public DateTimeOffset UpdatedAt { get; private set; }
 
     public long? AvailableBytes => TotalBytes is { } total ? Math.Max(0, total - UsedBytes) : null;
+
+    /// <summary>Space a new upload can still claim: available minus reservations. Null = no known limit.</summary>
+    public long? FreeBytes => TotalBytes is { } total ? Math.Max(0, total - UsedBytes - ReservedBytes) : null;
+
+    public long UploadedOn(DateOnly day) => UploadDay == day ? UploadedTodayBytes : 0;
 
     public void SetSecret(string ciphertext) => SecretCiphertext = ciphertext;
 
@@ -87,10 +97,10 @@ public sealed class StorageAccount : Entity, ITenantOwned
         UpdatedAt = now;
     }
 
-    /// <summary>Applies a usage change made by FreeSpace itself (upload committed, replica purged).</summary>
-    public void AdjustUsage(long deltaBytes, DateTimeOffset now)
+    /// <summary>Provider-specific non-secret settings learned later (e.g. the Drive app folder id).</summary>
+    public void UpdateConfig(string configJson, DateTimeOffset now)
     {
-        UsedBytes = Math.Max(0, UsedBytes + deltaBytes);
+        ConfigJson = configJson;
         UpdatedAt = now;
     }
 

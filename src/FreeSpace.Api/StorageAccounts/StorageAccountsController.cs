@@ -2,6 +2,8 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using FreeSpace.Api.Auditing;
 using FreeSpace.Api.Common;
+using FreeSpace.Api.Configurations;
+using FreeSpace.Domain.Files;
 using FreeSpace.Domain.Storage;
 using FreeSpace.Domain.Tenancy;
 using FreeSpace.Infrastructure.Persistence;
@@ -10,7 +12,9 @@ using FreeSpace.Infrastructure.Storage;
 using FreeSpace.Infrastructure.Storage.Google;
 using FreeSpace.Infrastructure.Storage.S3;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace FreeSpace.Api.StorageAccounts;
 
@@ -30,7 +34,16 @@ public sealed record UpdateStorageAccountRequest(
     [Range(0, 1000)] int? Priority,
     bool? Enabled);
 
+/// <param name="ReturnUrl">
+/// For native apps: where the browser goes after consent, with <c>status</c> and <c>accountId</c> appended.
+/// Must be a loopback URL (http://127.0.0.1:port/...) or a registered custom scheme (freespace://...).
+/// </param>
+public sealed record AuthorizeGoogleRequest([StringLength(2048)] string? ReturnUrl);
+
 public sealed record GoogleAuthorizationResponse(string AuthorizationUrl);
+
+public sealed record RoutingPolicyRequest([Required] UploadRoutingPolicy Policy);
+public sealed record RoutingPolicyResponse(UploadRoutingPolicy Policy);
 
 public sealed record StorageAccountResponse(
     Guid Id, StorageProvider Provider, string DisplayName, string? Email, StorageAccountStatus Status, int Priority,
@@ -120,8 +133,12 @@ public sealed class StorageAccountsController(AppDbContext db, AuditLog audit, T
         // Removing the account would orphan the bytes it holds; files must be deleted (or moved, later) first.
         if (await db.Replicas.AnyAsync(r => r.StorageAccountId == account.Id, ct))
             return ConflictError("storage_account_in_use", "This storage account still holds files. Delete them before removing the account.");
+        if (await db.UploadSessions.AnyAsync(s => s.StorageAccountId == account.Id && s.Status == UploadSessionStatus.Pending, ct))
+            return ConflictError("storage_account_in_use", "Uploads to this storage account are in progress. Finish or cancel them first.");
 
         await providers.Get(account.Provider).DisconnectAsync(account, ct);
+        // Finished upload sessions are only history; they must not keep the account alive.
+        await db.UploadSessions.Where(s => s.StorageAccountId == account.Id).ExecuteDeleteAsync(ct);
         db.StorageAccounts.Remove(account);
         audit.Record(TenantId, UserId, AuditActions.StorageRemoved, "storage_account", account.Id, new { account.Provider, account.DisplayName });
         await db.SaveChangesAsync(ct);
@@ -181,16 +198,38 @@ public sealed class StorageAccountsController(AppDbContext db, AuditLog audit, T
     /// <summary>Starts the Google consent flow; the browser should be sent to the returned URL.</summary>
     [HttpPost("google/authorize"), MinimumRole(TenantRole.Admin)]
     [ProducesResponseType<GoogleAuthorizationResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> AuthorizeGoogle([FromServices] IGoogleApi google, CancellationToken ct)
+    public async Task<IActionResult> AuthorizeGoogle([FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] AuthorizeGoogleRequest? request, [FromServices] IGoogleApi google, [FromServices] IOptions<AppOptions> appOptions, CancellationToken ct)
     {
         if (!google.IsConfigured)
             return Error(StatusCodes.Status503ServiceUnavailable, "google_not_configured", "Google OAuth is not configured on this server.");
 
+        var returnUrl = request?.ReturnUrl;
+        if (returnUrl is not null && !NativeRedirects.IsAllowed(returnUrl, appOptions.Value.NativeRedirectSchemes))
+            return BadRequestError("invalid_return_url", "Return URL must be a loopback address (http://127.0.0.1:port/...) or a registered app scheme.");
+
         var state = SecureTokens.Generate();
         var now = clock.GetUtcNow();
-        db.OAuthStates.Add(new OAuthState(StorageProvider.GoogleDrive, SecureTokens.Hash(state), TenantId, UserId, now + OAuthStateLifetime, now));
+        db.OAuthStates.Add(new OAuthState(StorageProvider.GoogleDrive, SecureTokens.Hash(state), TenantId, UserId, returnUrl, now + OAuthStateLifetime, now));
         await db.SaveChangesAsync(ct);
         return Ok(new GoogleAuthorizationResponse(google.BuildAuthorizationUrl(state)));
+    }
+
+    /// <summary>How new uploads choose an account: most free space, round-robin or by priority.</summary>
+    [HttpGet("routing-policy")]
+    [ProducesResponseType<RoutingPolicyResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetRoutingPolicy(CancellationToken ct) =>
+        Ok(new RoutingPolicyResponse(await db.Tenants.Where(t => t.Id == TenantId).Select(t => t.UploadRoutingPolicy).FirstAsync(ct)));
+
+    [HttpPut("routing-policy"), MinimumRole(TenantRole.Admin)]
+    [ProducesResponseType<RoutingPolicyResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> SetRoutingPolicy(RoutingPolicyRequest request, CancellationToken ct)
+    {
+        var tenant = await db.Tenants.FirstAsync(t => t.Id == TenantId, ct);
+        var previous = tenant.UploadRoutingPolicy;
+        tenant.SetUploadRoutingPolicy(request.Policy);
+        audit.Record(TenantId, UserId, AuditActions.RoutingPolicyChanged, "tenant", TenantId, new { previous, current = request.Policy });
+        await db.SaveChangesAsync(ct);
+        return Ok(new RoutingPolicyResponse(tenant.UploadRoutingPolicy));
     }
 
     private Task<StorageAccount?> FindAsync(Guid id, CancellationToken ct) => db.StorageAccounts.FirstOrDefaultAsync(a => a.Id == id, ct);
