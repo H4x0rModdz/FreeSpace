@@ -3,9 +3,13 @@ using System.Text.Json.Serialization;
 using FreeSpace.Api;
 using FreeSpace.Api.Auditing;
 using FreeSpace.Api.Auth;
+using FreeSpace.Api.StorageAccounts;
 using FreeSpace.Api.Tenants;
 using FreeSpace.Infrastructure.Persistence;
 using FreeSpace.Infrastructure.Security;
+using FreeSpace.Infrastructure.Storage;
+using FreeSpace.Infrastructure.Storage.Google;
+using FreeSpace.Infrastructure.Storage.S3;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -17,6 +21,11 @@ services.AddOptions<JwtOptions>().BindConfiguration("Jwt").ValidateDataAnnotatio
 services.AddOptions<AuthOptions>().BindConfiguration("Auth").ValidateDataAnnotations().ValidateOnStart();
 services.AddOptions<RateLimitOptions>().BindConfiguration("RateLimiting").ValidateDataAnnotations().ValidateOnStart();
 services.AddOptions<DatabaseOptions>().BindConfiguration("Database");
+services.AddOptions<AppOptions>().BindConfiguration("App");
+services.AddOptions<StorageOptions>().BindConfiguration("Storage").ValidateDataAnnotations().ValidateOnStart();
+services.AddOptions<EncryptionOptions>().BindConfiguration("Encryption").ValidateDataAnnotations().ValidateOnStart();
+services.AddOptions<GoogleOptions>().BindConfiguration("Google");
+services.AddOptions<S3Options>().BindConfiguration("Storage:S3");
 
 services.AddSingleton(TimeProvider.System);
 services.AddHttpContextAccessor();
@@ -35,6 +44,16 @@ services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
 services.AddSingleton<TokenService>();
 services.AddScoped<SessionIssuer>();
 services.AddScoped<AuditLog>();
+
+services.AddSingleton<ISecretProtector, AesGcmSecretProtector>();
+services.AddSingleton<IGoogleApi, GoogleApi>();
+services.AddSingleton<GoogleDriveStorageProvider>();
+services.AddSingleton<S3StorageProvider>();
+services.AddSingleton<IStorageProvider>(sp => sp.GetRequiredService<GoogleDriveStorageProvider>());
+services.AddSingleton<IStorageProvider>(sp => sp.GetRequiredService<S3StorageProvider>());
+services.AddSingleton<StorageProviderRegistry>();
+services.AddScoped<StorageAccountService>();
+services.AddHostedService<QuotaSyncWorker>();
 
 services.AddFreeSpaceAuth();
 services.AddFreeSpaceRateLimiting();
@@ -70,6 +89,7 @@ api.MapAuthEndpoints();
 api.MapTenantEndpoints();
 api.MapInvitationEndpoints();
 api.MapAuditEndpoints();
+api.MapStorageAccountEndpoints();
 
 app.Run();
 

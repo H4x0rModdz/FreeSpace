@@ -90,8 +90,9 @@ política do tenant (`most-available`, `round-robin`, `priority`).
 1. **Fundação** ✅ — solution, Docker, Postgres/EF, auth (registro, login, refresh rotativo,
    logout, troca de tenant), tenants, membros, convites, auditoria, ProblemDetails, rate limit,
    health checks, testes de integração com Testcontainers.
-2. **Storage accounts** — `IStorageProvider`, Google OAuth (conectar contas), S3 (com validação
-   SSRF), criptografia de credenciais, sync de quota (job), status `NeedsReauth`.
+2. **Storage accounts** ✅ — `IStorageProvider`, Google OAuth com escopo `drive.file`, S3 com
+   validação SSRF (inclusive no IP resolvido, contra DNS rebinding), credenciais AES-GCM ligadas
+   ao id da conta, sync de quota em background, status `NeedsReauth`.
 3. **Árvore virtual** — `Node`/`StoredObject`/`Replica`, pastas, mover/renomear, lixeira, busca, paginação.
 4. **Uploads** — sessões resumable (Drive direto, S3 multipart presigned), allocator, expiração/limpeza.
 5. **Downloads** — streaming com Range, preview, zip em streaming, shares públicos.

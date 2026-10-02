@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using FreeSpace.Domain.Auditing;
 using FreeSpace.Domain.Common;
 using FreeSpace.Domain.Identity;
+using FreeSpace.Domain.Storage;
 using FreeSpace.Domain.Tenancy;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,6 +18,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
     public DbSet<Membership> Memberships => Set<Membership>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+    public DbSet<StorageAccount> StorageAccounts => Set<StorageAccount>();
+    public DbSet<OAuthState> OAuthStates => Set<OAuthState>();
 
     // Referenced by the tenant query filter; EF re-evaluates it per context instance.
     private Guid? CurrentTenantId => tenantContext.TenantId;
@@ -25,6 +28,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
     {
         configurationBuilder.Properties<UserStatus>().HaveConversion<string>().HaveMaxLength(32);
         configurationBuilder.Properties<TenantRole>().HaveConversion<string>().HaveMaxLength(32);
+        configurationBuilder.Properties<StorageProvider>().HaveConversion<string>().HaveMaxLength(32);
+        configurationBuilder.Properties<StorageAccountStatus>().HaveConversion<string>().HaveMaxLength(32);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

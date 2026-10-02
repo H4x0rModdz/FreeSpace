@@ -25,6 +25,13 @@ services:
       ConnectionStrings__Postgres: Host=postgres;Database=${POSTGRES_DB:-freespace};Username=${POSTGRES_USER:-freespace};Password=${POSTGRES_PASSWORD}
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env}
       Auth__AllowRegistration: ${ALLOW_REGISTRATION:-true}
+      Encryption__Key: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env}
+      App__FrontendUrl: ${FRONTEND_URL:-}
+      Google__ClientId: ${GOOGLE_CLIENT_ID:-}
+      Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
+      Google__RedirectUri: ${GOOGLE_REDIRECT_URI:-}
+      Storage__S3__AllowPrivateEndpoints: ${S3_ALLOW_PRIVATE_ENDPOINTS:-false}
+      Storage__S3__AllowInsecureEndpoints: ${S3_ALLOW_INSECURE_ENDPOINTS:-false}
       Database__MigrateOnStartup: "true"
     ports:
       - "${API_PORT:-8080}:8080"

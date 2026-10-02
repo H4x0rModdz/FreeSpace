@@ -10,8 +10,9 @@ Por baixo, cada arquivo vai para a conta com espaço disponível, conforme a pol
 escolher. Para quem usa, continua sendo só `/Fotos/viagem.jpg`, sem precisar saber em qual
 conta ele está.
 
-> **Status:** em desenvolvimento ativo. A fundação (autenticação, multi-tenancy, convites,
-> auditoria) está pronta; integração com os storages vem nas próximas fases. Veja o
+> **Status:** em desenvolvimento ativo. Prontos: autenticação, multi-tenancy, convites,
+> auditoria e conexão de contas de storage (Google Drive e S3) com quota. Árvore de arquivos,
+> uploads e downloads vêm nas próximas fases. Veja o
 > [roadmap](docs/ARCHITECTURE.md#fases).
 
 ## Por que existe
@@ -117,10 +118,33 @@ Os erros seguem a RFC 9457 (`application/problem+json`) e trazem um campo `code`
 | GET/POST/DELETE | `/api/v1/tenants/current/invitations[/{id}]` | Convites por link (admin+) |
 | POST | `/api/v1/invitations/accept` | Aceitar convite |
 | GET | `/api/v1/tenants/current/audit-events` | Log de auditoria (admin+), `?limit=&before=` |
+| GET | `/api/v1/storage-accounts[/{id}]` | Contas de storage do espaço, com quota e status |
+| GET | `/api/v1/storage-accounts/summary` | Espaço total, usado e livre somando as contas ativas |
+| POST | `/api/v1/storage-accounts/google/authorize` | Admin+. Devolve a URL de consentimento do Google |
+| GET | `/api/v1/storage-accounts/google/callback` | Público (redirect do Google). Conecta a conta e volta ao frontend |
+| POST | `/api/v1/storage-accounts/s3` | Admin+. Valida endpoint e credenciais (grava e apaga um objeto de teste) |
+| PATCH | `/api/v1/storage-accounts/{id}` | Admin+. Nome, prioridade, habilitar/desabilitar |
+| POST | `/api/v1/storage-accounts/{id}/sync` | Admin+. Atualiza a quota agora |
+| DELETE | `/api/v1/storage-accounts/{id}` | Admin+. Remove (no Google, revoga o acesso concedido) |
 | GET | `/health/live`, `/health/ready` | Públicos |
 
 Papéis: `viewer < member < admin < owner`. Admins gerenciam e concedem apenas papéis abaixo
 de admin, e todo espaço mantém pelo menos um owner.
+
+## Conectando storages
+
+**Google Drive:** crie um OAuth client do tipo *Web application* no Google Cloud Console,
+ative a Drive API e cadastre `GOOGLE_REDIRECT_URI` como redirect autorizado. O FreeSpace pede
+apenas o escopo `drive.file`, ou seja, enxerga **só os arquivos que ele mesmo criou**, nunca o
+resto do seu Drive. Esse escopo não exige auditoria de segurança do Google.
+
+**S3-compatível:** informe endpoint, região, bucket e chaves. A conexão só é salva se as
+chaves conseguirem gravar e apagar um objeto de teste no prefixo. Endpoints em redes
+privadas e HTTP puro são bloqueados por padrão (proteção contra SSRF); para um MinIO na sua
+rede local, habilite `S3_ALLOW_PRIVATE_ENDPOINTS` e `S3_ALLOW_INSECURE_ENDPOINTS`.
+
+As credenciais ficam criptografadas no banco (AES-256-GCM) com a `ENCRYPTION_KEY`, que fica
+fora do banco. **Guarde um backup dessa chave**: sem ela, todas as contas precisam ser reconectadas.
 
 ## Segurança
 

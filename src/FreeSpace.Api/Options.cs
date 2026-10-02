@@ -36,3 +36,15 @@ public sealed class DatabaseOptions
 {
     public bool MigrateOnStartup { get; set; }
 }
+
+public sealed class AppOptions
+{
+    /// <summary>Public URL of the web app; OAuth callbacks redirect the browser back here.</summary>
+    public string? FrontendUrl { get; set; }
+}
+
+public sealed class StorageOptions
+{
+    public bool BackgroundQuotaSync { get; set; } = true;
+    [Range(1, 1440)] public int QuotaSyncMinutes { get; set; } = 15;
+}

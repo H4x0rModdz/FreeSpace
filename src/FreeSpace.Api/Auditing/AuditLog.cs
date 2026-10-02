@@ -18,6 +18,10 @@ public static class AuditActions
     public const string InvitationCreated = "invitation.created";
     public const string InvitationRevoked = "invitation.revoked";
     public const string InvitationAccepted = "invitation.accepted";
+    public const string StorageConnected = "storage.connected";
+    public const string StorageReconnected = "storage.reconnected";
+    public const string StorageUpdated = "storage.updated";
+    public const string StorageRemoved = "storage.removed";
 }
 
 /// <summary>

@@ -1,5 +1,6 @@
 using FreeSpace.Domain.Auditing;
 using FreeSpace.Domain.Identity;
+using FreeSpace.Domain.Storage;
 using FreeSpace.Domain.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -88,5 +89,34 @@ internal sealed class AuditEventConfiguration : IEntityTypeConfiguration<AuditEv
         b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         // Actor is kept loosely coupled so audit history survives user deletion.
         b.HasOne<User>().WithMany().HasForeignKey(x => x.ActorUserId).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+
+internal sealed class StorageAccountConfiguration : IEntityTypeConfiguration<StorageAccount>
+{
+    public void Configure(EntityTypeBuilder<StorageAccount> b)
+    {
+        b.Property(x => x.ExternalAccountId).HasMaxLength(512);
+        b.Property(x => x.DisplayName).HasMaxLength(Lengths.Name);
+        b.Property(x => x.Email).HasMaxLength(Lengths.Email);
+        b.Property(x => x.ConfigJson).HasColumnName("config").HasColumnType("jsonb");
+        b.Property(x => x.LastError).HasMaxLength(1000);
+        b.Ignore(x => x.AvailableBytes);
+        b.HasIndex(x => new { x.TenantId, x.Provider, x.ExternalAccountId }).IsUnique();
+        b.HasIndex(x => new { x.Status, x.LastQuotaSyncAt });
+        b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class OAuthStateConfiguration : IEntityTypeConfiguration<OAuthState>
+{
+    public void Configure(EntityTypeBuilder<OAuthState> b)
+    {
+        b.ToTable("oauth_states");
+        b.Property(x => x.StateHash).HasMaxLength(Lengths.Hash);
+        b.HasIndex(x => x.StateHash).IsUnique();
+        b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }

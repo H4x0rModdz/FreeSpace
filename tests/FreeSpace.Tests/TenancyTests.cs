@@ -10,40 +10,12 @@ namespace FreeSpace.Tests;
 [Collection(ApiCollection.Name)]
 public sealed class TenancyTests(ApiFactory factory)
 {
-    private async Task<(HttpClient Client, TokenPair Tokens, Guid UserId, Guid TenantId)> NewUserAsync()
-    {
-        var tokens = await factory.CreateClient().RegisterAsync();
-        var client = factory.CreateClient().WithToken(tokens.AccessToken);
-        var me = await client.GetJsonAsync<MeResponse>("/api/v1/me");
-        return (client, tokens, me.User.Id, me.Tenant.Id);
-    }
-
-    private static async Task<CreatedInvitationResponse> InviteAsync(HttpClient client, TenantRole role)
-    {
-        var response = await client.PostJsonAsync("/api/v1/tenants/current/invitations", new { email = ApiClient.UniqueEmail("invitee"), role });
-        await response.EnsureStatusAsync(HttpStatusCode.Created);
-        return await response.ReadAsync<CreatedInvitationResponse>();
-    }
-
-    /// <summary>Joins <paramref name="joiner"/> into the inviter's tenant and switches the joiner's session to it.</summary>
-    private async Task<HttpClient> JoinAndSwitchAsync(HttpClient inviter, HttpClient joiner, TenantRole role)
-    {
-        var invitation = await InviteAsync(inviter, role);
-        var accepted = await joiner.PostJsonAsync("/api/v1/invitations/accept", new { token = invitation.Token });
-        await accepted.EnsureStatusAsync(HttpStatusCode.OK);
-        var tenantId = (await accepted.ReadAsync<AcceptedInvitationResponse>()).TenantId;
-
-        var switched = await joiner.PostJsonAsync("/api/v1/auth/switch-tenant", new { tenantId });
-        await switched.EnsureStatusAsync(HttpStatusCode.OK);
-        return factory.CreateClient().WithToken((await switched.ReadAsync<AccessTokenResponse>()).AccessToken);
-    }
-
     [Fact]
     public async Task Tenant_owned_data_is_invisible_to_other_tenants()
     {
-        var alice = await NewUserAsync();
-        var bob = await NewUserAsync();
-        var aliceInvite = await InviteAsync(alice.Client, TenantRole.Member);
+        var alice = await factory.NewUserAsync();
+        var bob = await factory.NewUserAsync();
+        var aliceInvite = await alice.Client.InviteAsync(TenantRole.Member);
 
         var bobInvites = await bob.Client.GetJsonAsync<List<InvitationResponse>>("/api/v1/tenants/current/invitations");
         var revokeOther = await bob.Client.DeleteAsync($"/api/v1/tenants/current/invitations/{aliceInvite.Id}");
@@ -61,10 +33,10 @@ public sealed class TenancyTests(ApiFactory factory)
     [Fact]
     public async Task Invitation_flow_grants_membership_and_switch_changes_active_tenant()
     {
-        var alice = await NewUserAsync();
-        var bob = await NewUserAsync();
+        var alice = await factory.NewUserAsync();
+        var bob = await factory.NewUserAsync();
 
-        var bobInAlice = await JoinAndSwitchAsync(alice.Client, bob.Client, TenantRole.Member);
+        var bobInAlice = await factory.JoinAndSwitchAsync(alice.Client, bob.Client, TenantRole.Member);
 
         var me = await bobInAlice.GetJsonAsync<MeResponse>("/api/v1/me");
         Assert.Equal(alice.TenantId, me.Tenant.Id);
@@ -84,10 +56,10 @@ public sealed class TenancyTests(ApiFactory factory)
     [Fact]
     public async Task Invitation_tokens_are_single_use()
     {
-        var alice = await NewUserAsync();
-        var bob = await NewUserAsync();
-        var carol = await NewUserAsync();
-        var invitation = await InviteAsync(alice.Client, TenantRole.Viewer);
+        var alice = await factory.NewUserAsync();
+        var bob = await factory.NewUserAsync();
+        var carol = await factory.NewUserAsync();
+        var invitation = await alice.Client.InviteAsync(TenantRole.Viewer);
 
         await (await bob.Client.PostJsonAsync("/api/v1/invitations/accept", new { token = invitation.Token })).EnsureStatusAsync(HttpStatusCode.OK);
         var second = await carol.Client.PostJsonAsync("/api/v1/invitations/accept", new { token = invitation.Token });
@@ -99,8 +71,8 @@ public sealed class TenancyTests(ApiFactory factory)
     [Fact]
     public async Task Switching_to_a_tenant_without_membership_is_forbidden()
     {
-        var alice = await NewUserAsync();
-        var bob = await NewUserAsync();
+        var alice = await factory.NewUserAsync();
+        var bob = await factory.NewUserAsync();
 
         var response = await bob.Client.PostJsonAsync("/api/v1/auth/switch-tenant", new { tenantId = alice.TenantId });
 
@@ -110,11 +82,11 @@ public sealed class TenancyTests(ApiFactory factory)
     [Fact]
     public async Task Admins_cannot_grant_owner_or_invite_admins()
     {
-        var alice = await NewUserAsync();
-        var bob = await NewUserAsync();
-        var carol = await NewUserAsync();
-        var bobAsAdmin = await JoinAndSwitchAsync(alice.Client, bob.Client, TenantRole.Admin);
-        await JoinAndSwitchAsync(alice.Client, carol.Client, TenantRole.Member);
+        var alice = await factory.NewUserAsync();
+        var bob = await factory.NewUserAsync();
+        var carol = await factory.NewUserAsync();
+        var bobAsAdmin = await factory.JoinAndSwitchAsync(alice.Client, bob.Client, TenantRole.Admin);
+        await factory.JoinAndSwitchAsync(alice.Client, carol.Client, TenantRole.Member);
 
         var promote = await bobAsAdmin.PatchJsonAsync($"/api/v1/tenants/current/members/{carol.UserId}", new { role = TenantRole.Owner });
         var inviteAdmin = await bobAsAdmin.PostJsonAsync("/api/v1/tenants/current/invitations", new { email = ApiClient.UniqueEmail(), role = TenantRole.Admin });
@@ -130,7 +102,7 @@ public sealed class TenancyTests(ApiFactory factory)
     [Fact]
     public async Task Last_owner_cannot_leave_or_be_demoted()
     {
-        var alice = await NewUserAsync();
+        var alice = await factory.NewUserAsync();
 
         var leave = await alice.Client.DeleteAsync($"/api/v1/tenants/current/members/{alice.UserId}");
         var demote = await alice.Client.PatchJsonAsync($"/api/v1/tenants/current/members/{alice.UserId}", new { role = TenantRole.Admin });
@@ -143,9 +115,9 @@ public sealed class TenancyTests(ApiFactory factory)
     [Fact]
     public async Task Removed_member_loses_access_immediately()
     {
-        var alice = await NewUserAsync();
-        var bob = await NewUserAsync();
-        var bobInAlice = await JoinAndSwitchAsync(alice.Client, bob.Client, TenantRole.Member);
+        var alice = await factory.NewUserAsync();
+        var bob = await factory.NewUserAsync();
+        var bobInAlice = await factory.JoinAndSwitchAsync(alice.Client, bob.Client, TenantRole.Member);
 
         await (await alice.Client.DeleteAsync($"/api/v1/tenants/current/members/{bob.UserId}")).EnsureStatusAsync(HttpStatusCode.NoContent);
 
